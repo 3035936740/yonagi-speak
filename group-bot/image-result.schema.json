@@ -1,0 +1,1 @@
+{"type":"object","properties":{"image_path":{"type":"string"},"reason":{"type":"string"}},"required":["image_path","reason"],"additionalProperties":false}

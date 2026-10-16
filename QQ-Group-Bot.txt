@@ -1,0 +1,29 @@
+QQ群自动聊天配置
+
+指定群：985569438（AAA烧饼全国统一配送中心）
+模型：GPT-6 Luna（gpt-6-luna），轻度推理（low）。使用桌面版自带的Codex运行程序和现有ChatGPT登录。
+人设：yonagi，懂技术、爱网上冲浪、低调、穷，短句吐槽和接梗；家庭与真人经历问题选择沉默、转移话题或不知道。
+机器人目录：D:\MCP\qqmcp\group-bot
+配置文件：D:\MCP\qqmcp\group-bot\settings.json
+聊天风格：D:\MCP\qqmcp\group-bot\persona.txt
+状态文件：D:\MCP\qqmcp\group-bot\runtime\state.json
+运行日志：D:\MCP\qqmcp\group-bot\runtime\bot.log
+
+风格：像普通群友，短句、接梗、轻松吐槽，通常10–60字，硬限制120字。不写长篇、不刷屏。
+被@：有新消息且超过30秒冷却时响应。
+偶尔冒泡：距上次回复至少15分钟、积累至少8条新消息后，每批新消息以6%概率考虑参与；模型仍可以选择沉默。
+上限：滚动1小时最多6条回复，滚动24小时最多40条回复，单个自然日最多60次模型调用。
+启动时忽略历史消息。图片只作为占位符，不做图片理解。
+已使用本机Codex保存的ChatGPT登录，模型调用消耗当前账号额度。
+回复生成禁用其他MCP、命令执行和联网搜索，仅输出结构化聊天文本。
+仅对上述群生效。停止文件存在或enabled=false时不再发送回复。
+
+启动：双击旁边的 Start-QQ-Group-Bot.cmd。
+停止：双击旁边的 Stop-QQ-Group-Bot.cmd。
+NapCat必须保持在线。机器人自身在独立Windows进程运行；当前未配置开机自动启动。
+电脑休眠、QQ退出或额度耗尽时会暂停工作，错误后至少180秒再尝试生成。
+
+配置与聊天风格每轮自动读取，修改后不必重启。
+
+技术依据：Codex官方非交互模式可复用保存的CLI登录，并使用JSON Schema输出。
+https://learn.chatgpt.com/docs/non-interactive-mode

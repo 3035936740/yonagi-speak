@@ -1,0 +1,107 @@
+# Python environments, bytecode and tool caches
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+env/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.tox/
+.nox/
+.coverage
+.coverage.*
+htmlcov/
+*.egg-info/
+.ignore/
+
+# Installed dependencies and generated build/test output
+node_modules/
+build/
+dist/
+coverage/
+playwright-report/
+test-results/
+
+# Credentials and machine-specific environment files (keep templates)
+.env
+.env.*
+!.env.example
+!.env.sample
+!.env.template
+secrets.json
+*.pfx
+*.p12
+id_rsa
+id_ed25519
+
+# Local bot settings and per-group overrides; these remain on disk
+/group-bot/settings.json
+/work/group-bot/settings.json
+/group-bot/group-config/
+/work/group-bot/group-config/
+/group-bot/persona.txt
+/work/group-bot/persona.txt
+settings.local.json
+image-cleanup-tasks.json
+
+# Chat history, identities, memories, image caches and collected stickers
+runtime/
+runtime-*/
+shared-emoji-library/
+emoji-library/
+config-backups/
+deployment-backups/
+database-backups/
+admin-backups/
+backups/
+temp/
+tmp/
+*.sqlite
+*.sqlite3
+*.sqlite-wal
+*.sqlite-shm
+*.sqlite3-wal
+*.sqlite3-shm
+*.db
+*.db-wal
+*.db-shm
+*.db-journal
+
+# Logs, process markers and incomplete atomic writes
+*.log
+*.log.*
+*.pid
+*.tmp
+*.part
+console.lock
+instance.lock
+index.lock
+STOP
+CONSOLE_STOP
+NO_COOLDOWN
+
+# Downloaded runtimes, reference checkouts and disposable debug workspaces
+/qq-mcp/
+/work/napcat-shell/
+/work/maibot-reference/
+/work/NapCat.Shell.zip
+/work/*-probe/
+/work/*-fixture/
+/work/learning-validation/
+console-smoke/
+
+# Generated reports, copied delivery artifacts and local API/chat exports
+/outputs/
+/work/*.json
+/QQ-login-qr*.png
+
+# OS/editor noise; dependency lockfiles and source assets stay versioned
+.DS_Store
+Thumbs.db
+Desktop.ini
+.idea/
+.vs/
+*.swp
+*.swo
+*~

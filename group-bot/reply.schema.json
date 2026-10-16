@@ -1,0 +1,139 @@
+{
+  "type": "object",
+  "properties": {
+    "should_reply": {
+      "type": "boolean"
+    },
+    "text": {
+      "type": "string"
+    },
+    "reply_to": {
+      "type": "string"
+    },
+    "conversation": {
+      "type": "string",
+      "enum": [
+        "direct",
+        "open",
+        "others"
+      ]
+    },
+    "quote_reply": {
+      "type": "boolean",
+      "description": "是否用 QQ 引用回复当前目标消息。消息较早、隔了多条或多人串线时使用；对象清楚且紧邻时通常不用"
+    },
+    "at_message_ids": {
+      "type": "array",
+      "description": "可选：需要主动叫到某位群友时，填写 delivery_options 中该群友最近消息的 message_id；不要为了普通回答机械 @ 对方",
+      "items": {"type": "string"},
+      "maxItems": 2
+    },
+    "media_kind": {
+      "type": "string",
+      "enum": [
+        "none",
+        "qq_face",
+        "market_face",
+        "sticker"
+      ]
+    },
+    "media_id": {
+      "type": "string"
+    },
+    "action": {
+      "type": "string",
+      "description": "按整段语义选择动作；当前可变事实缺少来源时必须选择web_search，不能假装查过或索要截图代替搜索",
+      "enum": [
+        "chat",
+        "generate_image",
+        "web_search"
+      ]
+    },
+    "search_query": {
+      "type": "string",
+      "maxLength": 300,
+      "description": "action=web_search时，结合整段上下文写出需要查证的具体问题；其他动作留空"
+    },
+    "image_request": {
+      "type": "string",
+      "maxLength": 600
+    },
+    "text_parts": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "maxLength": 120
+      },
+      "maxItems": 3
+    },
+    "reply_mode": {
+      "type": "string",
+      "enum": [
+        "text",
+        "reaction",
+        "no_words",
+        "silent"
+      ]
+    },
+    "media_observations": {
+      "type": "array",
+      "maxItems": 3,
+      "items": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "emotion": {
+            "type": "string",
+            "enum": [
+              "开心",
+              "无语",
+              "疑惑",
+              "震惊",
+              "难过",
+              "赞同",
+              "安慰",
+              "打招呼",
+              "撒娇",
+              "调侃",
+              "其他"
+            ]
+          },
+          "description": {
+            "type": "string",
+            "maxLength": 35
+          },
+          "use_when": {
+            "type": "string",
+            "maxLength": 30
+          }
+        },
+        "required": [
+          "id",
+          "emotion",
+          "description",
+          "use_when"
+        ],
+        "additionalProperties": false
+      }
+    }
+  },
+  "required": [
+    "should_reply",
+    "text",
+    "reply_to",
+    "conversation",
+    "quote_reply",
+    "at_message_ids",
+    "media_kind",
+    "media_id",
+    "action",
+    "search_query",
+    "image_request",
+    "text_parts",
+    "reply_mode",
+    "media_observations"
+  ],
+  "additionalProperties": false
+}

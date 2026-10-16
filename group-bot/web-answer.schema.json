@@ -1,0 +1,11 @@
+{
+  "type": "object",
+  "properties": {
+    "answer": {"type": "string", "minLength": 4, "maxLength": 180},
+    "source_url": {"type": "string", "maxLength": 300},
+    "source_title": {"type": "string", "maxLength": 100},
+    "published_date": {"type": "string", "maxLength": 10}
+  },
+  "required": ["answer", "source_url", "source_title", "published_date"],
+  "additionalProperties": false
+}

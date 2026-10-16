@@ -1,0 +1,14 @@
+{
+  "type": "object", "additionalProperties": false,
+  "properties": {
+    "expressions": {"type": "array", "maxItems": 4, "items": {
+      "type": "object", "additionalProperties": false,
+      "properties": {"situation": {"type": "string"}, "pattern": {"type": "string"}, "example": {"type": "string"}, "source_ids": {"type": "array", "items": {"type": "string"}}},
+      "required": ["situation", "pattern", "example", "source_ids"]}},
+    "memories": {"type": "array", "maxItems": 6, "items": {
+      "type": "object", "additionalProperties": false,
+      "properties": {"kind": {"type": "string", "enum": ["event", "preference", "fact", "jargon"]}, "content": {"type": "string"}, "subject": {"type": "string"}, "keywords": {"type": "array", "items": {"type": "string"}}, "source_ids": {"type": "array", "items": {"type": "string"}}, "fact_key":{"type":"string","maxLength":40}, "confidence":{"type":"number","minimum":0,"maximum":1}, "supersedes":{"type":"array","maxItems":3,"items":{"type":"string"}}},
+      "required": ["kind", "content", "subject", "keywords", "source_ids", "fact_key", "confidence", "supersedes"]}},
+    "episode":{"type":"object","additionalProperties":false,"properties":{"summary":{"type":"string","maxLength":180},"recall_cues":{"type":"array","maxItems":4,"items":{"type":"string","maxLength":30}},"source_ids":{"type":"array","maxItems":28,"items":{"type":"string"}}},"required":["summary","recall_cues","source_ids"]}
+  }, "required": ["expressions", "memories", "episode"]
+}

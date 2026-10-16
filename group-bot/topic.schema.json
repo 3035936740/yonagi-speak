@@ -1,0 +1,12 @@
+{
+  "type": "object",
+  "properties": {
+    "category": {"type": "string", "enum": ["rhythm_games", "oc_art", "ai"]},
+    "message": {"type": "string", "minLength": 5, "maxLength": 90},
+    "source_url": {"type": "string", "maxLength": 500},
+    "source_title": {"type": "string", "maxLength": 100},
+    "published_date": {"type": "string", "minLength": 10, "maxLength": 10}
+  },
+  "required": ["category", "message", "source_url", "source_title", "published_date"],
+  "additionalProperties": false
+}
