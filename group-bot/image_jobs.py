@@ -1,3 +1,4 @@
+from platform_runtime import process_options, kill_process_group
 """Use the installed Codex built-in ImageGen with the existing subscription."""
 import asyncio
 import json
@@ -60,10 +61,15 @@ def resolve_output(result,events,started,references,root=None,cwd=None):
 async def terminate_job(process):
     """Both tree cleanup and reaping have deadlines; failed taskkill cannot hang."""
     if process.returncode is not None:return True
+    if os.name!='nt':
+        kill_process_group(process)
+        try:await asyncio.wait_for(process.wait(),5)
+        except (OSError,asyncio.TimeoutError):return False
+        return process.returncode is not None
     killer=None
     try:
         killer=await asyncio.create_subprocess_exec('taskkill.exe','/PID',str(process.pid),'/T','/F',
-            stdout=asyncio.subprocess.DEVNULL,stderr=asyncio.subprocess.DEVNULL,creationflags=subprocess.CREATE_NO_WINDOW)
+            stdout=asyncio.subprocess.DEVNULL,stderr=asyncio.subprocess.DEVNULL,**process_options())
         await asyncio.wait_for(killer.wait(),10)
     except (OSError,asyncio.TimeoutError):
         if killer and killer.returncode is None:
@@ -113,10 +119,10 @@ async def create_image(cfg, runtime, request, references):
     process = await asyncio.create_subprocess_exec(*command, cwd=str(Path(__file__).parent),
         env={**os.environ, 'PYTHONUTF8': '1', 'PYTHONIOENCODING': 'utf-8'},
         stdin=asyncio.subprocess.PIPE, stdout=asyncio.subprocess.PIPE,
-        stderr=asyncio.subprocess.PIPE, creationflags=subprocess.CREATE_NO_WINDOW)
+        stderr=asyncio.subprocess.PIPE, **process_options())
     try:
         stdout, stderr = await asyncio.wait_for(process.communicate(prompt.encode('utf-8')),
-            timeout=cfg.get('image_timeout_seconds', 600))
+            timeout=cfg.get('image_timeout_seconds', 150))
         events = []
         for line in stdout.decode('utf-8', errors='replace').splitlines():
             try: events.append(json.loads(line))

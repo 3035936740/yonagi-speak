@@ -134,9 +134,10 @@ async def analyze(cfg, context, target, image_paths, generate_json, runtime, vis
     started=time.monotonic()
     with tempfile.TemporaryDirectory(prefix='roles-',dir=runtime) as folder:
         async def run(role):
-            # All roles honor the visible configured budget, with the same cap.
-            role_timeout = timeout
-            role_cfg={**cfg,'model_timeout_seconds':min(role_timeout,cfg['model_timeout_seconds'])}
+            from model_timeouts import vision_config
+            role_timeout=min(timeout,cfg.get('model_timeout_seconds',30))
+            role_cfg=(vision_config(cfg) if role=='vision' else
+                {**cfg,'model_timeout_seconds':role_timeout,'_request_timeout_seconds':role_timeout})
             overrides=cfg.get('role_models',{}).get(role,{})
             for field in ('model','reasoning_effort'):
                 if field in overrides: role_cfg[field]=overrides[field]
@@ -171,7 +172,7 @@ async def analyze(cfg, context, target, image_paths, generate_json, runtime, vis
                     'image_response_mode由本轮语义和引用上下文决定：answer是实际询问图片、读字、翻译、分析；'
                     'react是发图分享、表情接梗；context是图片仅作背景而另有话要接；none是本轮图片无关。'
                     '不要把单独发图自动当作请描述图片，topic写参与当前对话的目的，不写一段画面解说。'
-                    'react可选reply/sticker/silent，接情绪和话题，不为证明看懂而逐项复述或替图中角色编故事。'
+                    'react中只有图片/表情、没有群友另说的文字时，选sticker或silent，不管是否已收录、有无图中文字，都不写画面点评或替角色配旁白；另有文字时才可选reply接话。'
                     '只有明确识图问答才按图解释；普通分享里的“看看”也可能是接梗，结合上下文决定。'
                     'expression_ids从候选中按语境和说话节奏选0～3项，可以语义相关而字面不同，避免照抄例句和强行括号。'
                     'memory_ids只选对当前话题有用的候选，历史事实不能当当前消息；无相关项空数组。'

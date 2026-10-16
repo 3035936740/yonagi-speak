@@ -62,6 +62,9 @@ class DebugWebUI:
                     if parsed.path=='/api/snapshot':return self.reply(200,owner.snapshot(parse_qs(parsed.query)))
                     if parsed.path=='/api/config':return self.reply(200,owner.public_config(parse_qs(parsed.query)))
                     query=parse_qs(parsed.query)
+                    if parsed.path=='/api/members':
+                        from member_labels import view
+                        return self.reply(200,view(owner.root,int(query.get('group',['0'])[0]),query.get('q',[''])[0]))
                     if parsed.path=='/api/database':return self.reply(200,database_view(owner.root,int(query.get('group',[owner.config.load()['group_id']])[0]),query.get('table',['notes'])[0],query.get('q',[''])[0],query.get('offset',[0])[0]))
                     if parsed.path=='/api/stickers':return self.reply(200,sticker_view(owner.root,query.get('q',[''])[0],query.get('offset',[0])[0]))
                     if parsed.path=='/api/sticker-image':

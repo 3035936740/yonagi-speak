@@ -3,6 +3,7 @@ import argparse
 import hashlib
 import json
 import logging
+import os
 from pathlib import Path
 import subprocess
 import sys
@@ -34,6 +35,9 @@ def task_plan(root):
 def sync_tasks(root,force=False):
     root=Path(root).resolve();plan=task_plan(root);state_path=root/'image-cleanup-tasks.json'
     previous=read_json(state_path)
+    if os.name!='nt':
+        if plan['tasks']:raise ValueError('Windows任务计划程序仅可用于Windows；请选择分钟间隔、每日定时或每张图片到期')
+        return {'tasks':[]}
     if not force and not plan['tasks'] and not previous.get('tasks'):return {'tasks':[]}
     if plan['tasks'] and not Path(plan['python']).is_file():raise ValueError('当前Python环境缺少pythonw.exe，不能隐藏运行Windows清理任务')
     with tempfile.TemporaryDirectory(prefix='qq-image-cleanup-') as folder:

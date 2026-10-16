@@ -1,9 +1,10 @@
-"""Windows CMD supervisor with live group transcripts and prefix commands."""
+"""Terminal supervisor with live group transcripts and prefix commands."""
 import argparse
 from collections import deque
 import ctypes
 import json
-import msvcrt
+from platform_runtime import msvcrt
+from platform_runtime import process_options, enable_terminal, PosixJob
 import os
 from pathlib import Path
 import shutil
@@ -102,8 +103,8 @@ class Supervisor:
             args=[sys.executable,'-X','utf8',str(self.root/'bot.py')]
             if group!=cfg['group_id']:args+=['--group-id',str(group)]
             process=subprocess.Popen(args,cwd=self.root,stdin=subprocess.DEVNULL,stdout=stream,stderr=stream,
-                creationflags=subprocess.CREATE_NO_WINDOW,env={**os.environ,'PYTHONIOENCODING':'utf-8'})
-            job=WindowsJob()
+                **process_options(),env={**os.environ,'PYTHONIOENCODING':'utf-8'})
+            job=WindowsJob() if os.name=='nt' else PosixJob()
             try:job.add(process)
             except Exception:process.terminate();stream.close();job.close();raise
             self.jobs[group]=job
@@ -136,6 +137,9 @@ class Supervisor:
 
 def alive(pid):
     if not pid:return False
+    if os.name!='nt':
+        from console_config import pid_alive
+        return pid_alive(pid)
     api=ctypes.WinDLL('kernel32',use_last_error=True)
     api.OpenProcess.restype=ctypes.c_void_p
     api.OpenProcess.argtypes=[ctypes.c_uint32,ctypes.c_bool,ctypes.c_uint32]
@@ -190,6 +194,10 @@ class Console:
             elif action=='database':
                 return {**database_mutate(self.root,group,str(value.get('table','')),str(value.get('mode','')),
                     value.get('values'),value.get('row_id'),value.get('expected')),'selected':group}
+            elif action=='member_label':
+                from member_labels import store
+                result=store(self.root,group).mark(str(value.get('account','')),str(value.get('label','')),value.get('note',''),value.get('aliases'))
+                return {'ok':True,'member':result,'selected':group,'message':'群友标记已保存，下次回复生效'}
             elif action=='sticker':
                 return {**sticker_mutate(self.root,str(value.get('mode','')),str(value.get('id','')),value.get('values')),'selected':group}
             elif action=='image':
@@ -377,7 +385,10 @@ class Console:
             temp.write_text(path.read_text(encoding='utf-8'),encoding='utf-8')
             self.notice='在记事本编辑并保存，关闭记事本后会校验和应用';self.draw()
             try:
-                subprocess.Popen(['notepad.exe',str(temp)])
+                if os.name=='nt':subprocess.Popen(['notepad.exe',str(temp)])
+                else:
+                    import shlex
+                    subprocess.run(shlex.split(os.environ.get('EDITOR','vi'))+[str(temp)],check=True)
                 self.notice='在记事本保存后回到此窗口按 Enter 应用，Esc 取消';self.draw()
                 while True:
                     char=msvcrt.getwch()
@@ -469,10 +480,7 @@ class Console:
         self._last_frame=frame
         sys.stdout.write('\x1b[H\x1b[2J'+frame);sys.stdout.flush()
     def run(self,auto_webui=False):
-        api=ctypes.WinDLL('kernel32');api.GetStdHandle.restype=ctypes.c_void_p
-        handle=api.GetStdHandle(-11);mode=ctypes.c_uint32()
-        api.GetConsoleMode.argtypes=[ctypes.c_void_p,ctypes.c_void_p];api.SetConsoleMode.argtypes=[ctypes.c_void_p,ctypes.c_uint32]
-        api.GetConsoleMode(handle,ctypes.byref(mode));api.SetConsoleMode(handle,mode.value|4)
+        restore_terminal=enable_terminal()
         sys.stdout.write('\x1b[?1049h');sys.stdout.flush()
         try:
             if auto_webui:self.open_webui()
@@ -489,6 +497,7 @@ class Console:
                     else:self.key(char)
                 self.draw();time.sleep(.08)
         finally:
+            restore_terminal()
             while True:
                 try:future,_=self.web_requests.get_nowait()
                 except queue.Empty:break

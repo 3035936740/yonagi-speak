@@ -1,6 +1,7 @@
 """Ground model-selected actions and memories in the actual supplied candidates."""
 import json
 from emoji_library import ReplyText
+from reply_behavior import reaction_only
 
 PLAN_FIELDS = {
     'action':{'type':'string','enum':['reply','wait','silent','search','sticker','draw','inspect_image']},
@@ -42,16 +43,19 @@ def apply_plan(cfg, target, context_result):
     if any(key not in expressions for key in plan['expression_ids']) or any(key not in memories for key in plan['memory_ids']):
         return None
     plan = dict(plan)
-    if (plan['action']=='reply' and target.get('_reply_style',{}).get('incoming_sticker_only')
+    media_only=reaction_only(target)
+    if (plan['action']=='reply' and media_only
             and target.get('_reply_style',{}).get('allow_no_words_reaction') and target.get('_media_choices')):
         plan['action']='sticker'
     # A sticker action is an executable media-only decision, not another hint.
     # If it is disabled or the pool is empty, keep the ordinary reply route.
     if plan['action']=='sticker' and (not target.get('_media_choices') or
             not target.get('_reply_style',{}).get('allow_no_words_reaction')):
-        plan['action']='reply'
+        plan['action']='silent' if media_only else 'reply'
+    if media_only and plan['action']=='reply':
+        plan['action']='silent'
     # A mandatory direct response never enters an endless wait/silence loop.
-    if target.get('at_bot') and plan['action'] in {'wait', 'silent'}:
+    if target.get('at_bot') and not media_only and plan['action'] in {'wait', 'silent'}:
         plan['action'] = 'reply'
     if target.get('_wait_attempts', 0) >= 1 and plan['action'] == 'wait':
         plan['action'] = 'reply'

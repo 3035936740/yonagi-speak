@@ -1,7 +1,7 @@
 """Explicit operator sends, delivered once by the owning group worker."""
 from contextlib import contextmanager
 import json
-import msvcrt
+from platform_runtime import msvcrt
 from pathlib import Path
 import re
 import time

@@ -14,6 +14,11 @@ env/
 htmlcov/
 *.egg-info/
 .ignore/
+/ignore/
+/tools/
+/launch.local.json
+/group-bot/napcat.env
+/work/group-bot/napcat.env
 
 # Installed dependencies and generated build/test output
 node_modules/

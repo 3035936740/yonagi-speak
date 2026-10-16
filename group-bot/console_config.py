@@ -13,6 +13,8 @@ from configure_launch import validate as validate_model
 from storage_io import atomic_write_text, read_text
 
 DEFAULTS = {'bot_name':'yonagi', 'bot_aliases':['Ethereal Paradise','EP'],'avatar_remote_enabled':False,
+    'member_auto_bot_marking_enabled':True,'member_auto_bot_min_observations':3,
+    'model_timeout_seconds':30,'vision_timeout_seconds':60,'image_timeout_seconds':150,
     'chat_image_display':'image',
     'webui_host':'127.0.0.1','webui_port':0,
     'max_reply_parts':6,'max_stickers_per_reply':3,
@@ -41,6 +43,10 @@ GLOBAL_ONLY = PROTECTED | {'chat_group_whitelist','webui_host','webui_port'}
 
 def pid_alive(pid):
     if not isinstance(pid,int) or pid<=0:return False
+    if os.name!='nt':
+        try:os.kill(pid,0);return True
+        except ProcessLookupError:return False
+        except PermissionError:return True
     kernel=ctypes.windll.kernel32
     kernel.OpenProcess.restype=ctypes.c_void_p
     kernel.OpenProcess.argtypes=[ctypes.c_ulong,ctypes.c_int,ctypes.c_ulong]
@@ -145,6 +151,9 @@ class Config:
                 if ('max_' in key or key in {'poll_seconds','context_messages','image_repeat_min_count','image_repeat_full_streak','image_repeat_window_messages','image_summary_window_messages'}) and value<=0:raise ValueError(key+' 必须大于0')
             elif isinstance(current[key],str) and (not isinstance(value,str) or len(value)>1000):raise ValueError(key+' 必须为短文本')
         if not 24<=cfg['recent_chat_journal_max_messages']<=100000:raise ValueError('近期记录条数范围24~100000')
+        if not 3<=cfg['member_auto_bot_min_observations']<=24:raise ValueError('自动bot标记需要3～24次独立指令响应')
+        for key in ('model_timeout_seconds','vision_timeout_seconds','image_timeout_seconds'):
+            if not 1<=cfg[key]<=7200:raise ValueError(key+' 范围1～7200秒')
         if not 100<=cfg['console_max_records']<=100000:raise ValueError('控制台记录条数范围100~100000')
         if not 500<=cfg['console_max_text_chars']<=1000000:raise ValueError('控制台文本字符上限范围500~1000000')
         if not 500<=cfg['max_prompt_chars']<=100000:raise ValueError('模型输入字符上限范围500~100000')

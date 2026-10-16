@@ -45,7 +45,7 @@ class RoleAnalysisTests(unittest.TestCase):
                 timeouts={role:timeout for role,_,timeout in started}
                 self.assertEqual(timeouts['context'],16)
                 self.assertEqual(timeouts['emotion'],16)
-                self.assertEqual(timeouts['vision'],16)
+                self.assertEqual(timeouts['vision'],60)
                 self.assertFalse(list(Path(root).glob('roles-*')))
         asyncio.run(run())
 

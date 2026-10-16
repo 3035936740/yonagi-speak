@@ -1,3 +1,7 @@
 @echo off
-powershell.exe -NoProfile -ExecutionPolicy Bypass -File "%~dp0Start-QQ-NapCat.ps1"
-pause
+setlocal DisableDelayedExpansion
+chcp 65001 >nul
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File "%~dp0Start-QQ-NapCat.ps1" %*
+set "result=%ERRORLEVEL%"
+if not "%result%"=="0" pause
+exit /b %result%

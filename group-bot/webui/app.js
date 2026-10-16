@@ -14,7 +14,7 @@ const categories=[
   ['participation','参与群聊的节奏','多久说一次话、什么时候接话、怎么回复',key=>/^passive_|^proactive_|^(adaptive_participation_enabled|social_planner_enabled|conversation_state_ttl_seconds|mention_cooldown_seconds|poll_seconds|peer_reply_enabled|at_reply_probability|quote_reply_probability|burst_reply_probability|friendly_tease_probability)$/.test(key)],
   ['sticker','表情','发表情的偏好与共享表情库的收录规则',key=>/sticker/.test(key)],
   ['cleanup','生成图片的清理','Bot 生成的图片保留多久、怎么清理',key=>/^generated_image_/.test(key)],
-  ['image','识图与绘图','读取群友图片、复读识别和绘图',key=>/^image_|^max_images?_|background_image_reading_enabled/.test(key)],
+  ['image','识图与绘图','读取群友图片、复读识别和绘图',key=>/^image_|^vision_|^max_images?_|background_image_reading_enabled/.test(key)],
   ['memory','记忆与学习','群聊记忆、表达学习和近期聊天存档',key=>/memory|learning|^style_|^semantic_|^recent_chat_journal/.test(key)],
   ['limits','额度与上下文','每小时/每天的上限，以及传给模型的上下文长度',key=>/^max_|^context_/.test(key)],
   ['debug','界面与容错','WebUI监听地址、聊天显示、记录容量和失败处理',key=>/^webui_|^console_|^reply_failure|^chat_image_display$/.test(key)],
@@ -53,22 +53,86 @@ function renderComposer(){
   if(previous!==key){if(previous)composerDrafts[previous]={text:input.value,scope:$('composer-scope').value,lifetime:$('composer-lifetime').value,minutes:$('composer-minutes').value};const draft=composerDrafts[key]||{};input.value=draft.text||'';$('composer-scope').value=draft.scope||'group';$('composer-lifetime').value=draft.lifetime||'context';$('composer-minutes').value=draft.minutes||'30';input.dataset.key=key;}
   const system=role==='system',s=snapshot.status,ready=system?snapshot.features?.includes('system_interventions'):snapshot.features?.includes('manual_send')&&s.enabled&&s.online&&s.manual_send_ready;
   document.querySelectorAll('[data-system-option]').forEach(el=>el.hidden=!system);$('composer-minutes-row').hidden=!system||$('composer-lifetime').value!=='timed';
-  input.maxLength=system?1500:2000;input.placeholder=system?'输入系统提示词，不会立即触发回复':'以 '+s.name+' 的身份向当前群发送消息';
+  input.maxLength=system?1500:2000;input.placeholder=(system?'输入系统提示词，不会立即触发回复':'以 '+s.name+' 的身份向当前群发送消息')+'\nEnter 发送 · Shift+Enter 换行';
   $('composer-role').options[1].textContent=s.name+' 消息（发到群）';$('composer-send').textContent=system?'提交系统提示词':'发送 '+s.name+' 消息';
   $('composer-send').disabled=!ready||!input.value.trim()||composerBusy.has(key)||(!system&&manualPending.has(selected));
-  $('composer-hint').textContent=system?'不立即回复；当前对话窗口 '+s.text_limit+' 字符。Ctrl+Enter 提交':!ready?'先启动并加载支持手动发送的群后台':'发送到本群 '+selected+'，成功后加入上下文与手动消息记忆。Ctrl+Enter 发送';
+  $('composer-hint').textContent=system?'不立即回复；当前对话窗口 '+s.text_limit+' 字符。Enter 提交，Shift+Enter 换行':!ready?'先启动并加载支持手动发送的群后台':'发送到本群 '+selected+'，成功后加入上下文与手动消息记忆。Enter 发送，Shift+Enter 换行';
   const result=composerResults.get(key);$('composer-result').textContent=result?.text||'';$('composer-result').classList.toggle('error',Boolean(result?.error));
 }
 async function checkManualSend(group){const pending=manualPending.get(group);if(!pending||pending.checking)return;pending.checking=true;try{const row=await api('/api/manual-send?'+new URLSearchParams({group,id:pending.id}));if(['queued','sending','delivered','record_pending'].includes(row.status)){composerResult(group,'bot',row.status==='record_pending'?'QQ已发送，本地记录正在补写':'手动消息正在排队或发送…');}else{manualPending.delete(group);manualDraftIDs.delete('bot:'+group);if(row.status==='sent'){composerDrafts['bot:'+group]={text:''};if(selected===group&&$('composer-text').dataset.key==='bot:'+group&&$('composer-text').value===pending.text)$('composer-text').value='';composerResult(group,'bot','已发送，消息 ID '+row.message_id+'；已加入上下文与手动消息记忆');}else composerResult(group,'bot',row.error||'未发送，请检查后台',true);}}catch(error){composerResult(group,'bot','暂时无法确认发送结果，请核对QQ：'+error.message,true);}finally{pending.checking=false;}}
 $('composer-role').onchange=()=>renderComposer();$('composer-lifetime').onchange=()=>renderComposer();$('composer-text').oninput=()=>renderComposer();
-$('composer-text').onkeydown=event=>{if(event.ctrlKey&&event.key==='Enter'&&!event.isComposing){event.preventDefault();if(!$('composer-send').disabled)$('composer').requestSubmit();}};
+$('composer-text').onkeydown=event=>{if(event.key==='Enter'&&!event.shiftKey&&!event.altKey&&!event.metaKey&&!event.isComposing&&event.keyCode!==229){event.preventDefault();if(!$('composer-send').disabled)$('composer').requestSubmit();}};
 $('composer').onsubmit=async event=>{event.preventDefault();const group=selected,role=$('composer-role').value,text=$('composer-text').value,key=composerKey();if(!text.trim()||composerBusy.has(key))return;composerBusy.add(key);try{if(role==='system'){await act({action:'system',mode:'add',group,text,target_scope:$('composer-scope').value,lifetime:$('composer-lifetime').value,minutes:Number($('composer-minutes').value)},$('composer-send'));composerDrafts[key]={text:''};if($('composer-text').dataset.key===key&&$('composer-text').value===text)$('composer-text').value='';composerResult(group,role,'系统提示词已保存，不触发立即回复');}else{let request=manualDraftIDs.get(key);if(!request||request.text!==text){request={id:crypto.randomUUID().replaceAll('-',''),text};manualDraftIDs.set(key,request);}const data=await act({action:'manual_send',group,text,request_id:request.id},$('composer-send'));manualPending.set(group,{id:data.request.id,text});composerResult(group,role,'手动消息已排队，等待群后台发送');await checkManualSend(group);}}catch(error){composerResult(group,role,error.message,true);}finally{composerBusy.delete(key);renderComposer();}};
 async function api(path,body){const response=await fetch(path,{headers:{'X-QQ-Debug-Key':token,...(body?{'Content-Type':'application/json'}:{})},method:body?'POST':'GET',...(body?{body:JSON.stringify(body)}:{})});const data=await response.json();if(!response.ok)throw Error(data.error||'请求失败');return data;}
 async function act(action,button){if(backendReady!==true&&!['command','restart','pause','delete'].includes(action.action))throw Error('调试服务还是旧版本：请在 CLI 输入 /exit 后重新启动 Debug');const operationGroup=action.group??selected;if(button)button.disabled=true;toast('正在处理…');try{const data=await api('/api/action',{group:operationGroup,...action});if(data.selected!==undefined&&selected===operationGroup)selected=data.selected;toast(data.message||'已完成');if(data.shutdown){closed=true;pollSequence++;$('connection').textContent='调试服务已退出';setDot('connection-dot',false);document.querySelectorAll('button,input,select,textarea').forEach(el=>el.disabled=true);}else await poll(true);return data;}catch(error){toast(error.message,true);throw error;}finally{if(button)button.disabled=closed;}}
 function setDot(id,online,error=false){$(id).classList.toggle('live',online);$(id).classList.toggle('error',error);}
 
-function renderGroups(){const term=$('group-search').value.toLowerCase();$('groups').replaceChildren();$('group-count').textContent=snapshot.groups.length;let matches=0;for(const group of snapshot.groups){if(!(group.name+' '+group.id).toLowerCase().includes(term))continue;matches++;const button=node('button',undefined,'group'+(group.id===selected?' active':''));button.type='button';button.dataset.group=String(group.id);button.setAttribute('aria-current',group.id===selected?'true':'false');button.title=group.name+'（'+group.id+'）';const avatar=avatarNode('group',group.id,group.name,'group-avatar',group.id);avatar.append(node('span',undefined,'dot'+(group.enabled!==false&&group.online&&!group.stopped?' live':'')));const text=node('span');text.append(node('span',group.name,'group-name'),node('span',groupState(group,group)[0]+' · '+group.id,'group-sub'));button.append(avatar,text);button.onclick=()=>{selectGroup(group.id);if(['system','stickers'].includes(currentTab))switchTab('logs');};$('groups').append(button);}if(!matches)$('groups').append(node('div',snapshot.groups.length?'没有匹配的群':'还没有授权的群，在下面输入群号添加','empty'));}
+const groupViews=new Map(),emptyGroups=node('div','','empty');
+function renderGroups(){
+  const term=$('group-search').value.toLowerCase(),container=$('groups'),present=new Set(snapshot.groups.map(group=>String(group.id))),visible=[];
+  $('group-count').textContent=snapshot.groups.length;
+  for(const [id,view] of groupViews)if(!present.has(id)){view.button.remove();groupViews.delete(id);}
+  for(const group of snapshot.groups){
+    const id=String(group.id);let view=groupViews.get(id);
+    if(!view){
+      const button=node('button',undefined,'group'),avatar=avatarNode('group',group.id,group.name,'group-avatar',group.id),dot=node('span',undefined,'dot'),text=node('span'),name=node('span','','group-name'),sub=node('span','','group-sub');
+      button.type='button';button.dataset.group=id;avatar.append(dot);text.append(name,sub);button.append(avatar,text);
+      button.onclick=()=>{selectGroup(group.id);if(['system','stickers'].includes(currentTab))switchTab('logs');};
+      view={button,avatar,dot,name,sub};groupViews.set(id,view);
+    }
+    const {button,dot,name,sub}=view,title=group.name+'（'+group.id+'）',subtitle=groupState(group,group)[0]+' · '+group.id,active=String(selected)===id;
+    button.classList.toggle('active',active);button.setAttribute('aria-current',String(active));button.title=title;
+    dot.classList.toggle('live',group.enabled!==false&&group.online&&!group.stopped);
+    if(name.textContent!==group.name)name.textContent=group.name;
+    if(sub.textContent!==subtitle)sub.textContent=subtitle;
+    view.avatar.firstChild.nodeValue=initial(group.name);
+    const cached=avatarCache.get(group.id+':group:'+group.id);
+    if(cached?.failed&&Date.now()-cached.time>60000&&!view.avatar.querySelector('img')){
+      const replacement=avatarNode('group',group.id,group.name,'group-avatar',group.id);replacement.append(dot);view.avatar.replaceWith(replacement);view.avatar=replacement;
+    }
+    if((group.name+' '+id).toLowerCase().includes(term))visible.push(button);
+  }
+  if(!visible.length){emptyGroups.textContent=snapshot.groups.length?'没有匹配的群':'还没有授权的群，在下面输入群号添加';visible.push(emptyGroups);}
+  for(const child of [...container.children])if(!visible.includes(child))child.remove();
+  visible.forEach((child,index)=>{if(container.children[index]!==child)container.insertBefore(child,container.children[index]||null);});
+}
 function selectGroup(group){stashPromptDraft();selected=group;selectedEvent=null;lastEvents='';configData=null;databaseData=null;dbSequence++;$('db-add').disabled=true;$('settings').replaceChildren(node('div','正在读取这个群的设置…','empty'));poll(true).then(()=>loadActivePane()).catch(error=>toast(error.message,true));}
+
+let memberSequence=0,memberEditor=null,memberEditorSequence=0;
+const memberLabelText=value=>({AI:'AI',bot:'bot',human:'真人'}[value]||'未标记');
+async function loadMembers(){
+  const ticket=++memberSequence,group=selected,data=await api('/api/members?'+new URLSearchParams({group,q:$('member-search').value}));
+  if(ticket!==memberSequence||group!==selected)return;
+  $('member-count').textContent='共 '+data.total+' 位群友，匹配 '+data.matched+' 位'+(data.matched>data.limit?'；最多显示 '+data.limit+' 位，请缩小搜索范围':'');
+  const table=node('table'),head=node('tr');for(const title of ['群友','额外昵称','标记','证据 / 说明','操作'])head.append(node('th',title));table.append(head);
+  for(const member of data.members){
+    const row=node('tr'),person=node('td'),names=node('td',member.aliases?.join('、')||'—'),type=node('td',memberLabelText(member.label)+(member.source==='manual'?' · 手动':member.source==='auto'?' · 自动推断':'')),evidence=node('td',(member.observations?'指令响应 '+member.observations+' 次。':'')+(member.note||'')),actions=node('td'),open=node('button','编辑资料');
+    const name=member.card||member.nickname||member.qq_id,avatar=avatarNode('user',member.qq_id,name,'group-avatar',group);avatar.classList.add('member-avatar-button');avatar.setAttribute('role','button');avatar.tabIndex=0;avatar.setAttribute('aria-label','查看并标记群友 '+name);avatar.onclick=()=>openMember(member.qq_id,name);avatar.onkeydown=event=>{if(event.key==='Enter'||event.key===' '){event.preventDefault();avatar.click();}};
+    const cell=node('div',undefined,'member-person');cell.append(avatar,node('span',name+' · '+member.qq_id));person.append(cell);open.type='button';open.onclick=()=>openMember(member.qq_id,name).catch(error=>toast(error.message,true));actions.append(open);row.append(person,names,type,evidence,actions);table.append(row);
+  }
+  $('member-records').replaceChildren(data.members.length?table:node('div','没有匹配的群友，可在上面填写QQ号手动标记','empty'));
+}
+async function openMember(account,name){
+  const ticket=++memberEditorSequence,group=selected;
+  const data=await api('/api/members?'+new URLSearchParams({group,q:account}));
+  if(ticket!==memberEditorSequence||group!==selected)return;
+  const member=data.members.find(item=>String(item.qq_id)===String(account))||{qq_id:String(account),nickname:name},person=$('member-dialog-person');memberEditor={group,account:String(account)};
+  person.replaceChildren(avatarNode('user',account,name,'group-avatar',group),node('strong',member.card||member.nickname||name),node('span',String(account),'code'));
+  $('member-dialog-label').value=member.manual_label||'auto';$('member-dialog-aliases').value=(member.aliases||[]).join(', ');$('member-dialog-note').value=member.note||'';
+  $('member-dialog-evidence').textContent='当前：'+memberLabelText(member.label)+(member.source==='manual'?'（手动）':member.source==='auto'?'（自动推断）':'')+'；独立指令响应 '+(member.observations||0)+' 次。'+(member.evidence||[]).map(item=>item.command+' → 消息 '+item.response_id).join('；');
+  $('member-dialog-result').textContent='';if(!$('member-dialog').open)$('member-dialog').showModal();
+}
+$('member-dialog-close').onclick=()=>{$('member-dialog').close();memberEditor=null;};
+$('member-dialog-form').onsubmit=async event=>{event.preventDefault();if(!memberEditor)return;const editor={...memberEditor},button=$('member-dialog-save');button.disabled=true;try{
+  const aliases=$('member-dialog-aliases').value.split(/[,，\n]/).map(name=>name.trim()).filter(Boolean);
+  const saved=await act({action:'member_label',group:editor.group,account:editor.account,label:$('member-dialog-label').value,aliases,note:$('member-dialog-note').value},button);
+  $('member-dialog-evidence').textContent='当前：'+memberLabelText(saved.member.label)+(saved.member.source==='manual'?'（手动）':saved.member.source==='auto'?'（自动推断）':'')+'；独立指令响应 '+saved.member.observations+' 次。';
+  $('member-dialog-label').value=saved.member.manual_label||'auto';$('member-dialog-aliases').value=(saved.member.aliases||[]).join(', ');$('member-dialog-note').value=saved.member.note||'';
+  $('member-dialog-result').textContent='已保存，后续回复使用此标记和昵称';if(currentTab==='members'&&selected===editor.group)await loadMembers();
+}catch(error){$('member-dialog-result').textContent=error.message;}finally{button.disabled=false;}};
+$('member-form').onsubmit=async event=>{event.preventDefault();const group=selected;try{await act({action:'member_label',group,account:$('member-account').value.trim(),label:$('member-label').value,note:$('member-note').value},$('member-save'));if(group===selected)await loadMembers();}catch{}};
+$('member-refresh').onclick=()=>loadMembers().catch(error=>toast(error.message,true));
+$('member-search').oninput=()=>loadMembers().catch(error=>toast(error.message,true));
 
 const eventKey=row=>JSON.stringify([row.time,row.kind,row.message_id,row.role,['received','sent'].includes(row.kind)?'':row.text]);
 const contextID=row=>String(row.context_id||row.trace_id||row.request_id||row.message_id||'—');
@@ -140,7 +204,9 @@ function messageRow(row){
   const tags=[];if(pictures.length)tags.push('含 '+pictures.length+' 张图片');if(row.manual)tags.push('手动发送');if(row.historical)tags.push('历史恢复');if(row.level&&row.level!=='INFO')tags.push(row.level);
   if(tags.length||toggle){const line=node('div',undefined,'msg-tags');for(const tag of tags)line.append(node('span',tag));if(toggle)line.append(toggle);body.append(line);}
   item.updateRecord=latest=>{row=latest;pictures=latest.image_info||[];};
-  item.append(avatarNode('user',row.user_id,name,'avatar'),body);return item;
+  const avatar=avatarNode('user',row.user_id,name,'avatar');
+  if(/^[1-9]\d{4,14}$/.test(String(row.user_id||''))){avatar.classList.add('member-avatar-button');avatar.setAttribute('role','button');avatar.tabIndex=0;avatar.setAttribute('aria-label','查看并标记群友 '+name);const open=event=>{event.stopPropagation();openMember(row.user_id,name).catch(error=>toast(error.message,true));};avatar.onclick=open;avatar.onkeydown=event=>{if(event.key==='Enter'||event.key===' '){event.preventDefault();open(event);}};}
+  item.append(avatar,body);return item;
 }
 function flowRow(row){const item=node('div',undefined,'flow '+row.kind);item.title=eventSummary(row);item.append(node('span',eventTime(row),'flow-time'),node('span',(labels[row.kind]||row.kind)+(row.role?' · '+row.role:''),'kind-chip '+levelClass(row)),node('span',eventSummary(row)||'—','flow-text'));return item;}
 function jsonView(target,value){target.replaceChildren();const json=JSON.stringify(value,null,2),regex=/("(?:\\.|[^"\\])*"\s*:?)|\b(true|false|null)\b|(-?\d+(?:\.\d+)?(?:e[+-]?\d+)?)/gi;let offset=0;for(const match of json.matchAll(regex)){target.append(document.createTextNode(json.slice(offset,match.index)));target.append(node('span',match[0],match[1]?(match[0].endsWith(':')?'json-key':'json-string'):match[2]?'json-literal':'json-number'));offset=match.index+match[0].length;}target.append(document.createTextNode(json.slice(offset)));}
@@ -196,7 +262,7 @@ function cooldownRow(){const box=node('div',undefined,'setting'),label=node('div
 function renderConfig(){const term=$('config-search').value.trim().toLowerCase(),area=$('settings'),scroll=area.scrollTop,cfg=configData.config;const priority=['enabled','bot_name','bot_aliases','model','reasoning_effort','fast_mode','passive_probability','sticker_reply_probability','chat_image_display','at_reply_probability','quote_reply_probability','proactive_topic_probability'];const keys=[...priority.filter(key=>key in cfg),...Object.keys(cfg).filter(key=>!priority.includes(key))].filter(key=>{const meta=configData.fields[key];return (meta.label+' '+key+' '+meta.help).toLowerCase().includes(term);});const buckets=new Map(categories.map(item=>[item[0],[]]));for(const key of keys)buckets.get(categories.find(item=>item[3](key))[0]).push(key);area.replaceChildren();$('settings-index').replaceChildren();for(const [id,title,description] of categories){const list=buckets.get(id),showCooldown=id==='participation'&&(!term||'回复冷却 cooldown'.includes(term));if(!list.length&&!showCooldown)continue;const section=node('section',undefined,'setting-group');section.id='settings-'+id;section.append(node('h3',title));if(description)section.append(node('p',description));if(showCooldown)section.append(cooldownRow());for(const key of list)section.append(settingRow(key));area.append(section);const jump=node('button',title);jump.type='button';jump.append(node('span',String(list.length+(showCooldown?1:0)),'count'));jump.onclick=()=>section.scrollIntoView({block:'start',behavior:matchMedia('(prefers-reduced-motion: reduce)').matches?'auto':'smooth'});$('settings-index').append(jump);}if(!area.children.length)area.append(node('div','没有找到包含“'+term+'”的设置','empty'));area.scrollTop=scroll;}
 
 async function switchTab(tab){stashPromptDraft();currentTab=tab;document.querySelectorAll('[data-context-tabs] button').forEach(item=>{const active=item.dataset.tab===tab;item.classList.toggle('active',active);item.setAttribute('aria-selected',String(active));});document.querySelectorAll('.side-nav [data-view]').forEach(item=>item.classList.toggle('active',item.dataset.view===tab));document.querySelectorAll('.tab').forEach(item=>item.classList.toggle('active',item.id==='tab-'+tab));try{if(snapshot)renderStatus();await loadActivePane();}catch(error){toast(error.message,true);}}
-async function loadActivePane(){if(['settings','persona'].includes(currentTab))await loadConfig();else if(currentTab==='database')await loadDatabase();else if(currentTab==='stickers')await loadStickers();else if(currentTab==='system')await loadSystem();}
+async function loadActivePane(){if(['settings','persona'].includes(currentTab))await loadConfig();else if(currentTab==='database')await loadDatabase();else if(currentTab==='stickers')await loadStickers();else if(currentTab==='system')await loadSystem();else if(currentTab==='members')await loadMembers();}
 document.querySelectorAll('[data-context-tabs] [data-tab]').forEach(button=>button.onclick=()=>switchTab(button.dataset.tab));
 document.querySelectorAll('.side-nav [data-view]').forEach(button=>button.onclick=()=>switchTab(button.dataset.view));
 document.querySelectorAll('[data-kind]').forEach(button=>button.onclick=()=>{kind=button.dataset.kind;document.querySelectorAll('[data-kind]').forEach(item=>item.classList.toggle('active',item===button));poll(true);});

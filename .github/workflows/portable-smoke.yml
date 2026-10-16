@@ -1,0 +1,23 @@
+name: Portable launch and conversation checks
+on: [push, pull_request]
+jobs:
+  smoke:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [windows-latest, ubuntu-latest, macos-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: python -m pip install -r requirements.txt
+      - run: python scripts/manage.py init
+      - name: Offline checks (no QQ or model calls)
+        shell: python
+        run: |
+          from pathlib import Path
+          import subprocess, sys
+          root = Path('group-bot') if Path('group-bot').is_dir() else Path('work/group-bot')
+          subprocess.run([sys.executable, '-m', 'unittest', 'test_portable_launch', 'test_member_labels', 'test_visual_response', '-q'], cwd=root, check=True)

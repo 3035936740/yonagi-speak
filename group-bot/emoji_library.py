@@ -186,7 +186,7 @@ class EmojiLibrary:
         if not self.shared or self._depth:
             yield
             return
-        import msvcrt
+        from platform_runtime import msvcrt
         with (self.root / 'index.lock').open('a+b') as lock:
             if lock.seek(0, 2) == 0:
                 lock.write(b'0')

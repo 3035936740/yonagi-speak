@@ -4,6 +4,29 @@ import re
 from peer_reply import spoken_text
 
 
+def reaction_only(target):
+    """Media annotations/OCR are not a request for a caption or a visual answer."""
+    words=re.sub(r'@\d+|\[[^\]]*\]','',spoken_text(target.get('text',''))).strip()
+    if words:return False
+    if target.get('_image_response_mode') in {'answer','context','none'}:return False
+    if target.get('_sticker_ids'):return True
+    # A quoted picture alone does not turn a new text turn into a sticker turn.
+    own_image=bool(target.get('_images') or target.get('_image_hashes')
+        or re.search(r'\[(?:图片|商城表情|表情包)[^\]]*\]',str(target.get('text',''))))
+    return own_image and target.get('_image_response_mode') not in {'answer','context','none'}
+
+
+def restrict_visual_reaction(cfg,target):
+    """Apply after context classification, and again at the execution boundary."""
+    if not reaction_only(target):return
+    style=target.get('_reply_style')
+    if style is None:
+        style=preferences(cfg,any(item.get('kind') in {'sticker','market_face'}
+            for item in target.get('_media_choices',[])),target)
+    target['_reply_style']={**style,'image_reaction_only':True,
+        'prefer_reaction':bool(style.get('allow_no_words_reaction'))}
+
+
 def delivery_preferences(cfg):
     """One draw per reply; successful draws become actual grounded attachments."""
     return {'allow_at':random.random()<cfg.get('at_reply_probability',.5),

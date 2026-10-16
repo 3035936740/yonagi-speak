@@ -17,7 +17,7 @@
     <div class="group-heading"><h1 id="group-title">正在读取群列表…</h1><div class="group-meta"><span id="group-status" class="status-pill">—</span><span id="group-subtitle"></span><span id="session-detail"></span></div></div>
     <div id="group-actions" class="group-actions"><button id="pause" type="button">暂停</button><button id="restart" type="button">重启</button><button id="white-remove" type="button" class="danger-text">移出白名单</button></div>
   </header>
-  <nav id="group-tabs" class="tabs" data-context-tabs aria-label="当前群页面"><button data-tab="logs" class="active" type="button">聊天记录<span id="trace-count" class="count">0</span></button><button data-tab="status" type="button">运行状态</button><button data-tab="settings" type="button">行为设置</button><button data-tab="persona" type="button">人设与规则</button><button data-tab="database" type="button">群记忆</button></nav>
+  <nav id="group-tabs" class="tabs" data-context-tabs aria-label="当前群页面"><button data-tab="logs" class="active" type="button">聊天记录<span id="trace-count" class="count">0</span></button><button data-tab="status" type="button">运行状态</button><button data-tab="settings" type="button">行为设置</button><button data-tab="persona" type="button">人设与规则</button><button data-tab="database" type="button">群记忆</button><button data-tab="members" type="button">群友标记</button></nav>
 
   <section id="tab-logs" class="tab active">
     <div class="toolbar">
@@ -38,7 +38,7 @@
             <label id="composer-minutes-row" hidden>分钟<input id="composer-minutes" type="number" min="1" max="10080" value="30"></label>
           </div>
           <textarea id="composer-text" rows="2" maxlength="1500" placeholder="输入系统提示词，不会立即触发回复" aria-label="发送内容"></textarea>
-          <div class="composer-bottom"><span id="composer-hint" class="hint">系统指令仅供后续回复使用；Ctrl+Enter 提交</span><button id="composer-send" type="submit" class="primary" disabled>提交系统提示词</button></div>
+          <div class="composer-bottom"><span id="composer-hint" class="hint">系统指令仅供后续回复使用；Enter 提交，Shift+Enter 换行</span><button id="composer-send" type="submit" class="primary" disabled>提交系统提示词</button></div>
           <div id="composer-result" class="composer-result" role="status" aria-live="polite"></div>
         </form>
         <div id="record-count" class="chat-footer"></div>
@@ -60,6 +60,12 @@
   </section>
 
   <section id="tab-status" class="tab"><div class="page"><div id="status" class="status-page"></div></div></section>
+  <section id="tab-members" class="tab">
+    <div class="page-bar"><input id="member-search" type="search" placeholder="搜索群友昵称、QQ号或标记" aria-label="搜索群友标记"><span class="spacer"></span><button id="member-refresh" type="button">刷新</button></div>
+    <p class="page-note">标记只保存在当前群后台。手动标记优先；自动 bot 标记需要多次指令响应证据，不根据聊天文风猜测 AI 或真人。</p>
+    <form id="member-form" class="member-editor"><label>QQ号<input id="member-account" inputmode="numeric" pattern="[1-9][0-9]{4,14}" required aria-label="标记群友QQ号"></label><label>账号类型<select id="member-label"><option value="AI">AI</option><option value="bot">bot</option><option value="human">真人</option><option value="auto">恢复自动判断</option><option value="clear">清除标记和判断记录</option></select></label><label class="member-note">说明<input id="member-note" maxlength="200" placeholder="可选，仅供后台参考"></label><button id="member-save" class="primary" type="submit">保存标记</button></form>
+    <p id="member-count" class="page-note"></p><div id="member-records" class="data-table"></div>
+  </section>
 
   <section id="tab-settings" class="tab">
     <div class="page-bar">
@@ -105,6 +111,15 @@
 </main>
 </div>
 
+<dialog id="member-dialog" class="intervention-dialog" aria-labelledby="member-dialog-title"><form id="member-dialog-form">
+  <div class="dialog-head"><h2 id="member-dialog-title">群友资料与标记</h2><button id="member-dialog-close" type="button" class="icon-button" aria-label="关闭群友资料">×</button></div>
+  <div id="member-dialog-person" class="member-person"></div>
+  <div class="store-field"><label for="member-dialog-label">账号类型</label><select id="member-dialog-label"><option value="auto">自动判断 / 未标记</option><option value="AI">AI</option><option value="bot">bot</option><option value="human">真人</option><option value="clear">清除标记和判断记录</option></select></div>
+  <div class="store-field"><label for="member-dialog-aliases">额外昵称</label><textarea id="member-dialog-aliases" rows="2" placeholder="千柒, aaaa（逗号或换行分隔）" maxlength="500"></textarea></div>
+  <div class="store-field"><label for="member-dialog-note">后台说明</label><input id="member-dialog-note" maxlength="200" placeholder="可选"></div>
+  <p id="member-dialog-evidence" class="page-note"></p><p class="page-note">仅对当前群生效；手动标记优先。额外昵称绑定此QQ号，识别称呼时使用，不发送到QQ群。</p>
+  <div class="dialog-foot"><span id="member-dialog-result" class="hint" role="status"></span><button id="member-dialog-save" class="primary" type="submit">保存标记和昵称</button></div>
+</form></dialog>
 <dialog id="intervention-dialog" class="intervention-dialog" aria-labelledby="intervention-title">
   <div class="dialog-head"><h2 id="intervention-title">系统干预</h2><button id="intervention-close" type="button" class="icon-button" aria-label="关闭">×</button></div>
   <p class="hint">后台指令供后续自然触发的回复使用，提交不会立即回复，也不会发送到 QQ。默认随当前对话文本窗口移出而失效。</p>

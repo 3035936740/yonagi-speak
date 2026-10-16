@@ -3,7 +3,7 @@ from contextlib import contextmanager
 import hashlib
 import io
 import json
-import msvcrt
+from platform_runtime import msvcrt
 from pathlib import Path
 import re
 import time
