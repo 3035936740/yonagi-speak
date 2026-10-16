@@ -38,6 +38,18 @@ button:focus-visible,input:focus-visible,select:focus-visible,textarea:focus-vis
 .icon-button{width:32px;height:32px;padding:0;border:0;background:transparent;font-size:20px;line-height:1;color:var(--ink-3)}
 input,select,textarea{background:var(--field);border:1px solid var(--line-strong);border-radius:7px;padding:6px 10px;min-width:0;outline:none}
 input:focus,select:focus,textarea:focus{border-color:var(--accent)}
+@supports (appearance:base-select){
+  select,select::picker(select){appearance:base-select}
+  select{display:inline-flex;align-items:center;gap:12px;cursor:pointer}
+  select::picker-icon{color:var(--ink-3);transition:transform .12s}
+  select:open::picker-icon{transform:rotate(180deg)}
+  select::picker(select){background:var(--panel);color:var(--ink);border:1px solid var(--line-strong);border-radius:10px;padding:5px;margin-block:6px;box-shadow:var(--shadow);max-height:min(320px,55vh);overflow:auto;min-width:anchor-size(width);font:13px/1.6 var(--ui)}
+  select option{display:flex;align-items:center;gap:10px;min-height:32px;padding:6px 11px;border-radius:6px;cursor:pointer;white-space:normal}
+  select option:checked{background:var(--accent-soft);color:var(--accent);font-weight:600}
+  select option:hover,select option:focus-visible{background:var(--hover);outline:none}
+  select option::checkmark{color:var(--accent);order:1;margin-inline-start:auto}
+  select option:disabled{color:var(--ink-3);cursor:default}
+}
 input::placeholder,textarea::placeholder{color:var(--ink-3)}
 input[type=checkbox]{accent-color:var(--accent);width:15px;height:15px;margin:0 6px 0 0}
 input[type=search]::-webkit-search-cancel-button{display:none}
@@ -293,6 +305,9 @@ h1{font-size:20px;font-weight:650;line-height:1.35;overflow:hidden;text-overflow
 .pager{display:flex;align-items:center;justify-content:flex-end;gap:8px;padding:10px 24px;border-top:1px solid var(--line);font-size:13px;color:var(--ink-3)}
 .pager>span{margin-right:auto}
 .pager button{padding:4px 12px;font-size:13px}
+.pager{flex-wrap:wrap}
+.page-jump{display:inline-flex;align-items:center;gap:6px;white-space:nowrap;color:var(--ink-2)}
+.page-jump input{width:65px;padding:4px 6px;text-align:center;font-variant-numeric:tabular-nums}
 .page-note{padding:10px 24px 0;font-size:13px;color:var(--ink-3)}
 .sticker-grid{flex:1;overflow:auto;display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));align-content:start;gap:14px;padding:14px 24px 24px}
 .sticker-entry{display:flex;flex-direction:column;min-width:0;padding:10px;border-radius:10px;border:1px solid var(--line);background:var(--panel)}

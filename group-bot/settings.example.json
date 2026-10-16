@@ -4,6 +4,8 @@
     123456789
   ],
   "enabled": false,
+  "webui_host":"127.0.0.1",
+  "webui_port":0,
   "model": "gpt-6-luna",
   "reasoning_effort": "low",
   "fast_mode": false,
@@ -57,7 +59,7 @@
     "yonagi"
   ],
   "console_max_records": 6000,
-  "chat_image_display": "text",
+  "chat_image_display": "image",
   "console_max_text_chars": 6000,
   "image_summary_window_messages": 2000,
   "image_repeat_window_messages": 10,

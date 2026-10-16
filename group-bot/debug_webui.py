@@ -1,10 +1,12 @@
 """Local authenticated debug UI; mutations run on the CLI supervisor thread."""
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 import hmac
+import ipaddress
 import json
 import os
 from pathlib import Path
 import secrets
+import socket
 import threading
 from urllib.parse import urlsplit, parse_qs
 from console_config import Config, PROTECTED, read_json, runtime, deleted_ids
@@ -16,6 +18,7 @@ from system_interventions import Interventions
 from manual_outbox import ManualOutbox
 from debug_images import image_bytes
 from sticker_prefill import StickerPrefill
+from debug_history import recover_chat,lane
 
 ASSETS={'/':'index.html','/app.js':'app.js','/style.css':'style.css','/theme.js':'theme.js'}
 
@@ -26,7 +29,7 @@ class DebugWebUI:
         self.token=secrets.token_urlsafe(24);self.server=None;self.thread=None
     def start(self):
         if self.server:return self.url
-        owner=self
+        owner=self;cfg=self.config.load();self.bind_host=cfg['webui_host'];address=ipaddress.ip_address(self.bind_host)
         class Handler(BaseHTTPRequestHandler):
             def log_message(self,*args):pass
             def reply(self,status,value,mime='application/json; charset=utf-8'):
@@ -37,7 +40,15 @@ class DebugWebUI:
                 self.send_header('Content-Security-Policy',"default-src 'self'; script-src 'self'; style-src 'self'; connect-src 'self'; img-src 'self' data: blob:; object-src 'none'; frame-ancestors 'none'; form-action 'self'")
                 self.end_headers();self.wfile.write(body)
             def allowed_host(self):
-                return self.headers.get('Host') in {f'127.0.0.1:{owner.server.server_port}',f'localhost:{owner.server.server_port}'}
+                if len(self.headers.get_all('Host',[]))!=1:return False
+                try:
+                    host=urlsplit('http://'+self.headers['Host'])
+                    if host.username or host.password or host.path or host.query or host.fragment:return False
+                    if (host.port or 80)!=owner.server.server_port:return False
+                    if host.hostname=='localhost':return address.is_loopback or address.is_unspecified
+                    requested=ipaddress.ip_address(host.hostname)
+                    return not requested.is_unspecified and (address.is_unspecified or requested==address)
+                except (ValueError,TypeError):return False
             def authorized(self):return hmac.compare_digest(self.headers.get('X-QQ-Debug-Key',''),owner.token)
             def do_GET(self):
                 if not self.allowed_host():return self.reply(403,{'error':'Invalid local host'})
@@ -85,7 +96,7 @@ class DebugWebUI:
                     except (ValueError,OSError):pass
                     return self.reply(status,{'error':message})
                 origin=self.headers.get('Origin')
-                if not self.allowed_host() or (origin and origin not in {f'http://127.0.0.1:{owner.server.server_port}',f'http://localhost:{owner.server.server_port}'}):
+                if not self.allowed_host() or (origin and origin!='http://'+self.headers.get('Host','')):
                     return reject(403,'Invalid local origin')
                 if not self.authorized():return reject(401,'授权会话失效，请在CLI输入 /webui')
                 if urlsplit(self.path).path!='/api/action':return self.reply(404,{'error':'Not found'})
@@ -100,12 +111,20 @@ class DebugWebUI:
                 except TimeoutError:return self.reply(504,{'error':'操作仍在处理中，请查看群状态后再操作'})
                 except (ValueError,KeyError,OSError,TypeError) as exc:return self.reply(400,{'error':str(exc)})
                 except Exception as exc:return self.reply(500,{'error':'操作失败：'+type(exc).__name__})
-        self.server=ThreadingHTTPServer(('127.0.0.1',0),Handler)
+        class Server(ThreadingHTTPServer):
+            address_family=socket.AF_INET6 if address.version==6 else socket.AF_INET
+        try:self.server=Server((self.bind_host,cfg['webui_port']),Handler)
+        except OSError as exc:
+            raise ValueError('WebUI无法监听 '+self.bind_host+':'+str(cfg['webui_port'])+'：'+str(exc)) from exc
         self.server.daemon_threads=True
         self.thread=threading.Thread(target=self.server.serve_forever,name='qq-debug-webui',daemon=True);self.thread.start()
         return self.url
     @property
-    def base_url(self):return f'http://127.0.0.1:{self.server.server_port}/'
+    def base_url(self):
+        host=self.bind_host
+        if ipaddress.ip_address(host).is_unspecified:host='::1' if ':' in host else '127.0.0.1'
+        if ':' in host:host='['+host+']'
+        return f'http://{host}:{self.server.server_port}/'
     @property
     def url(self):return self.base_url+'#key='+self.token
     def close(self):
@@ -139,8 +158,10 @@ class DebugWebUI:
                     if key in seen:continue
                     seen.add(key)
                 records.append(row)
-        records=records[-cfg['console_max_records']:]
+        records=recover_chat(records,folder,cfg,hidden,selected)
         stored_text_chars=sum(text_chars(row) for row in records)
+        chat_text_chars=sum(text_chars(row) for row in records if lane(row)=='chat')
+        flow_text_chars=stored_text_chars-chat_text_chars
         records=enrich_quotes(records,folder,hidden)
         records=enrich_users(records,folder,cfg)
         records=enrich_images(records,folder,self.root/'shared-emoji-library',cfg)
@@ -159,6 +180,7 @@ class DebugWebUI:
             'online':bool(state.get('online')),'pid':state.get('pid'),'last_poll':state.get('last_poll'),
             'error':state.get('error',''),'waiting_for_qq':bool(state.get('waiting_for_qq')),
             'records':len(records),'shown_records':len(filtered),'text_chars':stored_text_chars,
+            'chat_text_chars':chat_text_chars,'flow_text_chars':flow_text_chars,
             'text_limit':cfg['console_max_text_chars'],'prompt_limit':cfg['max_prompt_chars'],
             'chat_image_display':cfg['chat_image_display'],
             'model_calls_today':state.get('model_calls_today',0),'image_summaries':len(cache.get('entries',{})),
@@ -189,7 +211,7 @@ class DebugWebUI:
             'scope':scope,'group':group,'overrides':scoped.overrides(),
             'global_config':{key:value for key,value in self.config.load().items() if key not in PROTECTED|HIDDEN_FIELDS},
             'prompt_overrides':{name:(scoped.scope_root/(name+'.txt')).exists() if scope=='group' else True for name in ('persona','reply_protocol')},
-            'global_only':['chat_group_whitelist'],
+            'global_only':['chat_group_whitelist','webui_host','webui_port'],
             'global_prompts':{name:(self.root/(name+'.txt')).read_text(encoding='utf-8') if (self.root/(name+'.txt')).exists() else '' for name in ('persona','reply_protocol')},
             'persona':scoped.prompt_path('persona').read_text(encoding='utf-8'),'models':models,
             'reply_protocol':scoped.prompt_path('reply_protocol').read_text(encoding='utf-8') if scoped.prompt_path('reply_protocol').exists() else '',

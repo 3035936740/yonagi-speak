@@ -1,6 +1,7 @@
 """Choose delivery styles without turning every incoming message into a reply."""
 import random
 import re
+from peer_reply import spoken_text
 
 
 def delivery_preferences(cfg):
@@ -13,7 +14,7 @@ def delivery_preferences(cfg):
 def preferences(cfg, has_stickers, target=None):
     from interaction import social_act
     target = target or {}
-    text = target.get('text', '')
+    text = spoken_text(target.get('text', ''))
     act = social_act(text)
     factual = bool(target.get('_feedback_on_answer')) or (act in {'request', 'question'} and bool(re.search(r'怎么|为什么|如何|报错|安装|代码|多少|参数|ffmpeg|nvenc|配置|API|模型|总结|概括|解释|网页|链接|看一下|看下|看一眼', text, re.I)))
     technical = act in {'request','question'} and bool(re.search(
@@ -25,6 +26,8 @@ def preferences(cfg, has_stickers, target=None):
     friendly_tease = bool(technical and familiar and random.random()
         < cfg.get('friendly_tease_probability',.18))
     incoming_sticker = bool(target.get('_sticker_ids'))
+    words=re.sub(r'@\d+|\[[^\]]*\]','',text).strip()
+    incoming_sticker_only=incoming_sticker and not words
     recent_media = int(target.get('_recent_bot_media_count', 0) or 0)
     last_bot_media = bool(target.get('_last_bot_sent_media'))
     playful = act in {'role_play', 'play', 'banter', 'greeting', 'acknowledgement'}
@@ -43,13 +46,14 @@ def preferences(cfg, has_stickers, target=None):
     no_words_rate=rate('no_words_sticker_probability',.4)
     allow_reaction = not suppressed and reaction_rate>0 and no_words_rate>0
     allow_followup = not suppressed and followup_rate>0
-    reaction_first = bool(allow_reaction and random.random()<reaction_rate)
+    reaction_first = bool(allow_reaction and (incoming_sticker_only or random.random()<reaction_rate))
     followup = bool(allow_followup and not reaction_first and random.random()<followup_rate)
     policy = ('text_only' if not allow_reaction and not allow_followup else
         'reaction_or_followup' if allow_reaction and allow_followup else
         'reaction_optional' if allow_reaction else 'followup_optional')
     return {
         'prefer_reaction': reaction_first,
+        'incoming_sticker_only':incoming_sticker_only,
         'allow_no_words_reaction': allow_reaction,
         'prefer_no_words_reaction':bool(allow_reaction and random.random()<no_words_rate),
         'allow_followup_sticker': allow_followup,

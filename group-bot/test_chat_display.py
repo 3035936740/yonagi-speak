@@ -29,7 +29,7 @@ class ChatDisplayTests(unittest.TestCase):
     def tearDown(self):self.validation.stop();self.temp.cleanup()
 
     def test_default_global_group_inheritance_and_restart_persistence(self):
-        self.assertEqual(Config(self.root,100).load()['chat_image_display'],'text')
+        self.assertEqual(Config(self.root,100).load()['chat_image_display'],'image')
         Config(self.root).set('chat_image_display','image')
         self.assertEqual(Config(self.root,100).load()['chat_image_display'],'image')
         Config(self.root,100).set('chat_image_display','text')
@@ -43,7 +43,7 @@ class ChatDisplayTests(unittest.TestCase):
         for value in ['picture','',True,42,{}]:
             cfg=Config(self.root).load();cfg['chat_image_display']=value
             with self.subTest(value=value),self.assertRaises(ValueError):Config(self.root).save(cfg)
-        self.assertEqual(Config(self.root).load()['chat_image_display'],'text')
+        self.assertEqual(Config(self.root).load()['chat_image_display'],'image')
         self.assertEqual(set(metadata(Config(self.root).load())['chat_image_display']['options']),{'text','image'})
 
     def test_snapshot_exposes_effective_mode_and_leaves_chat_memory_text_unchanged(self):

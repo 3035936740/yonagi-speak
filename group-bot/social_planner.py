@@ -42,6 +42,9 @@ def apply_plan(cfg, target, context_result):
     if any(key not in expressions for key in plan['expression_ids']) or any(key not in memories for key in plan['memory_ids']):
         return None
     plan = dict(plan)
+    if (plan['action']=='reply' and target.get('_reply_style',{}).get('incoming_sticker_only')
+            and target.get('_reply_style',{}).get('allow_no_words_reaction') and target.get('_media_choices')):
+        plan['action']='sticker'
     # A sticker action is an executable media-only decision, not another hint.
     # If it is disabled or the pool is empty, keep the ordinary reply route.
     if plan['action']=='sticker' and (not target.get('_media_choices') or

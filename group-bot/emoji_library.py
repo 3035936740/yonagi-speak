@@ -410,7 +410,7 @@ class EmojiLibrary:
             data = segment.get('data', {})
             if segment.get('type') == 'mface' or (segment.get('type') == 'image' and data.get('emoji_id')):
                 key = 'm' + hashlib.sha256(str(data.get('emoji_id', '')).encode()).hexdigest()[:16]
-            elif segment.get('type') == 'image' and str(data.get('sub_type')) == '1':
+            elif segment.get('type') == 'image':
                 key = sticker_source_key(data)
             else:
                 continue

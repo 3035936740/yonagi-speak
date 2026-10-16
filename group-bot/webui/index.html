@@ -93,14 +93,14 @@
   <section id="tab-database" class="tab">
     <div class="page-bar"><select id="db-table" aria-label="选择数据表"></select><input id="db-search" type="search" placeholder="搜索内容、群友或 ID" aria-label="搜索群记忆"><span class="spacer"></span><button id="db-refresh" type="button">刷新</button><button id="db-add" type="button" class="primary">新增一条</button></div>
     <div id="db-records" class="data-table"></div>
-    <div class="pager"><span id="db-count"></span><button id="db-prev" type="button">上一页</button><button id="db-next" type="button">下一页</button></div>
+    <div class="pager"><span id="db-count"></span><button id="db-prev" type="button">上一页</button><button id="db-next" type="button">下一页</button><label class="page-jump">前往 <input id="db-page" type="number" min="1" step="1" inputmode="numeric" aria-label="数据库目标页码"> 页</label><button id="db-jump" type="button">跳转</button></div>
   </section>
 
   <section id="tab-stickers" class="tab">
     <div class="page-bar"><input id="sticker-search" type="search" placeholder="搜索名称、情绪或哈希" aria-label="搜索表情库"><span class="spacer"></span><button id="sticker-refresh" type="button">刷新</button><button id="sticker-add" type="button" class="primary">手动录入表情包</button></div>
     <p class="page-note">所有授权群共用。可人工确认直接入库，也可交给自动审核；支持从聊天图片详情收录。</p>
     <div id="sticker-records" class="sticker-grid"></div>
-    <div class="pager"><span id="sticker-count"></span><button id="sticker-prev" type="button">上一页</button><button id="sticker-next" type="button">下一页</button></div>
+    <div class="pager"><span id="sticker-count"></span><button id="sticker-prev" type="button">上一页</button><button id="sticker-next" type="button">下一页</button><label class="page-jump">前往 <input id="sticker-page" type="number" min="1" step="1" inputmode="numeric" aria-label="表情库目标页码"> 页</label><button id="sticker-jump" type="button">跳转</button></div>
   </section>
 </main>
 </div>

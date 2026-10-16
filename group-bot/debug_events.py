@@ -9,6 +9,7 @@ from contextvars import ContextVar
 from contextlib import contextmanager
 from console_config import Config
 from debug_references import text_chars
+from debug_history import bounded
 
 CURRENT = None
 TRACE = ContextVar('qq_debug_trace',default={})
@@ -81,10 +82,7 @@ class DebugEvents:
         return updated
 
     def _save(self, cfg):
-        limit=cfg['console_max_text_chars']
-        total=sum(text_chars(item) for item in self.rows)
-        while self.rows and (total>limit or len(self.rows)>cfg['console_max_records']):
-            total-=text_chars(self.rows.popleft())
+        self.rows=deque(bounded(self.rows,cfg))
         temp=self.path.with_suffix('.tmp')
         try:
             temp.write_text(''.join(json.dumps(item,ensure_ascii=False,separators=(',',':'))+'\n'

@@ -1,5 +1,6 @@
 """Validated, atomic local controls shared by the console and bot."""
 import hashlib
+import ipaddress
 import json
 import os
 from pathlib import Path
@@ -12,7 +13,8 @@ from configure_launch import validate as validate_model
 from storage_io import atomic_write_text, read_text
 
 DEFAULTS = {'bot_name':'yonagi', 'bot_aliases':['Ethereal Paradise','EP'],'avatar_remote_enabled':False,
-    'chat_image_display':'text',
+    'chat_image_display':'image',
+    'webui_host':'127.0.0.1','webui_port':0,
     'max_reply_parts':6,'max_stickers_per_reply':3,
     'console_max_records':6000, 'console_max_text_chars':6000, 'image_summary_window_messages':2000,
     'image_repeat_window_messages':10, 'image_repeat_min_count':3,
@@ -34,7 +36,7 @@ ALIASES = {'name':'bot_name','aliases':'bot_aliases','rate':'passive_probability
     'effort':'reasoning_effort','fast':'fast_mode','records':'console_max_records',
     'whitelist':'chat_group_whitelist','prompt':'persona','protocol':'reply_protocol','text_limit':'console_max_text_chars'}
 PROTECTED = {'group_id','mcp_env_file','codex_exe'}
-GLOBAL_ONLY = PROTECTED | {'chat_group_whitelist'}
+GLOBAL_ONLY = PROTECTED | {'chat_group_whitelist','webui_host','webui_port'}
 
 
 def pid_alive(pid):
@@ -162,6 +164,10 @@ class Config:
         if cfg['generated_image_windows_schedule'] not in {'interval','daily'}:raise ValueError('Windows任务可选分钟间隔或每日定时')
         if cfg['passive_trigger_mode'] not in {'frequency','dynamic'}:raise ValueError('水群触发方式为frequency或dynamic')
         if cfg['chat_image_display'] not in {'text','image'}:raise ValueError('聊天图片默认显示方式为text或image')
+        if not isinstance(cfg['webui_host'],str):raise ValueError('WebUI监听地址必须是IP地址')
+        try:ipaddress.ip_address(cfg['webui_host'])
+        except ValueError:raise ValueError('WebUI监听地址必须是IPv4或IPv6，例如127.0.0.1、0.0.0.0、::')
+        if type(cfg['webui_port']) is not int or not 0<=cfg['webui_port']<=65535:raise ValueError('WebUI端口范围0~65535，0表示随机端口')
         if type(cfg['max_reply_parts']) is not int or not 1<=cfg['max_reply_parts']<=10:raise ValueError('单次回复文字条数范围1~10')
         if type(cfg['max_stickers_per_reply']) is not int or not 1<=cfg['max_stickers_per_reply']<=5:raise ValueError('单次回复表情张数范围1~5')
         if not 30<=cfg['passive_window_seconds']<=180:raise ValueError('水群待处理消息有效期范围30~180秒')

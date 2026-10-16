@@ -6,6 +6,7 @@ from pathlib import Path
 import tempfile
 import time
 from debug_events import emit
+from debug_events import safe_log
 from group_identity import identity_facts, identity_instruction, qq_id
 from social_planner import PLAN_SCHEMA, checked_plan
 
@@ -133,9 +134,8 @@ async def analyze(cfg, context, target, image_paths, generate_json, runtime, vis
     started=time.monotonic()
     with tempfile.TemporaryDirectory(prefix='roles-',dir=runtime) as folder:
         async def run(role):
-            # Context controls directness and web research, so honor its configured
-            # budget. Emotion/vision remain cheap optional hints capped at 12s.
-            role_timeout = timeout if role == 'context' else min(12, timeout)
+            # All roles honor the visible configured budget, with the same cap.
+            role_timeout = timeout
             role_cfg={**cfg,'model_timeout_seconds':min(role_timeout,cfg['model_timeout_seconds'])}
             overrides=cfg.get('role_models',{}).get(role,{})
             for field in ('model','reasoning_effort'):
@@ -229,7 +229,9 @@ async def analyze(cfg, context, target, image_paths, generate_json, runtime, vis
                 raise
             except Exception as exc:
                 # Failure of an optional analysis must not suppress an @ reply.
-                log.warning('Role analysis fallback; role=%s; error_type=%s',role,type(exc).__name__)
+                reason='timeout' if isinstance(exc,TimeoutError) or 'timed out' in str(exc).lower() else 'generation_error'
+                log.warning('Role analysis fallback; role=%s; reason=%s; error_type=%s; timeout_seconds=%s; detail=%s',
+                    role,reason,type(exc).__name__,role_cfg['model_timeout_seconds'],safe_log(str(exc))[:240])
                 return (role,None)
         results=[]
         if 'vision' in calls:

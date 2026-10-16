@@ -17,6 +17,7 @@ import webbrowser
 from console_config import Config, PROTECTED, ALIASES, read_json, runtime, unique, delete_local, atomic, deleted_ids
 from debug_events import clean
 from debug_references import text_chars
+from debug_history import recover_chat,lane
 from debug_store import database_mutate, sticker_mutate
 from runtime_paths import prepare_runtime_paths
 from system_interventions import command as intervention_command,Interventions
@@ -254,9 +255,10 @@ class Console:
                         if key in seen:continue
                         seen.add(key)
                     rows.append(row)
+            rows=recover_chat(rows,folder,Config(self.root,group).load(),hidden,group)
             rows+=Interventions(self.root,group).events()
             rows.sort(key=lambda row:row.get('time',0))
-            self.rows[group]=rows[-cfg['console_max_records']:]
+            self.rows[group]=rows
     def switch(self,step):
         groups=self.groups();self.group=groups[(groups.index(self.group)+step)%len(groups)];self.scroll=0
         self.notice='已切换到 '+self.names.get(self.group,str(self.group))
@@ -310,7 +312,7 @@ class Console:
         if command=='status':
             cfg=self.config.load();folder=runtime(self.root,self.group,cfg);state=read_json(folder/'state.json')
             cache=read_json(folder/'image-memory.json');rows=self.rows.get(self.group,[])
-            self.notice=f"{self.names.get(self.group)}({self.group}) | 在线={state.get('online',False)} PID={state.get('pid')} 最近轮询={state.get('last_poll')} | 调试记录={len(rows)} 文本={sum(text_chars(row) for row in rows)}/{cfg['console_max_text_chars']}字符 | 模型输入上限={cfg['max_prompt_chars']}字符 近期对话={cfg['recent_chat_journal_max_messages']}条/{cfg['recent_chat_journal_hours']}小时 | 今日模型调用={state.get('model_calls_today',0)} | 图片摘要={len(cache.get('entries',{}))} 已观察消息={cache.get('sequence',0)} | {cfg['model']} {cfg['reasoning_effort']} fast={cfg['fast_mode']} | 内存={state.get('memory_stats',{})}";return
+            self.notice=f"{self.names.get(self.group)}({self.group}) | 在线={state.get('online',False)} PID={state.get('pid')} 最近轮询={state.get('last_poll')} | 调试记录={len(rows)} 对话文本={sum(text_chars(row) for row in rows if lane(row)=='chat')}/{cfg['console_max_text_chars']}字符 | 模型输入上限={cfg['max_prompt_chars']}字符 近期对话={cfg['recent_chat_journal_max_messages']}条/{cfg['recent_chat_journal_hours']}小时 | 今日模型调用={state.get('model_calls_today',0)} | 图片摘要={len(cache.get('entries',{}))} 已观察消息={cache.get('sequence',0)} | {cfg['model']} {cfg['reasoning_effort']} fast={cfg['fast_mode']} | 内存={state.get('memory_stats',{})}";return
         if command=='groups':self.notice=' | '.join(f'{self.names.get(g,g)} ({g})' for g in self.groups());return
         if command=='group':
             hits=self.matches(rest)
