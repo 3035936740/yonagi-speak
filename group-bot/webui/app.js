@@ -11,6 +11,9 @@ const titles={bot_name:'人格名字',bot_aliases:'点名识别别名',model:'�
 const categories=[
   ['identity','身份与开关','Bot 叫什么、是否启用、在哪些群工作',key=>['enabled','bot_name','bot_aliases','chat_group_whitelist'].includes(key)],
   ['model','模型','生成回复用的模型、思考强度和分工角色',key=>/^(model|reasoning_effort|fast_mode|multi_role_enabled|role_models|role_timeout_seconds|model_timeout_seconds|text_transport)$/.test(key)],
+  ['member-reference','群友资料：模型参考','选择允许传给模型参考的账号资料，默认全部开启',key=>/^member_reference_/.test(key)],
+  ['member-model','群友资料：模型自行标记','独立控制模型修改三项资料的权限，默认全部关闭；人工资料优先',key=>/^member_model_/.test(key)],
+  ['member-rules','群友资料：规则判断','按指令响应行为推断bot，不调用模型',key=>/^member_auto_/.test(key)],
   ['participation','参与群聊的节奏','多久说一次话、什么时候接话、怎么回复',key=>/^passive_|^proactive_|^(adaptive_participation_enabled|social_planner_enabled|conversation_state_ttl_seconds|mention_cooldown_seconds|poll_seconds|peer_reply_enabled|at_reply_probability|quote_reply_probability|burst_reply_probability|friendly_tease_probability)$/.test(key)],
   ['sticker','表情','发表情的偏好与共享表情库的收录规则',key=>/sticker/.test(key)],
   ['cleanup','生成图片的清理','Bot 生成的图片保留多久、怎么清理',key=>/^generated_image_/.test(key)],
@@ -100,13 +103,15 @@ function selectGroup(group){stashPromptDraft();selected=group;selectedEvent=null
 
 let memberSequence=0,memberEditor=null,memberEditorSequence=0;
 const memberLabelText=value=>({AI:'AI',bot:'bot',human:'真人'}[value]||'未标记');
+const memberSourceText=value=>({manual:'手动',model:'模型推断',auto:'规则推断'}[value]||'未标记');
+function memberEvidence(member){return '当前：'+memberLabelText(member.label)+'（'+memberSourceText(member.source)+'）；独立指令响应 '+(member.observations||0)+' 次。'+(member.evidence||[]).map(item=>item.command+' → 消息 '+item.response_id).join('；')+(member.model_history?.length?' 模型资料修改：'+member.model_history.map(item=>({account_type:'账号类型',extra_names:'额外昵称',account_note:'账号说明'}[item.field]||item.field)+' · 证据 '+item.evidence_message_ids.join('、')).join('；'):'');}
 async function loadMembers(){
   const ticket=++memberSequence,group=selected,data=await api('/api/members?'+new URLSearchParams({group,q:$('member-search').value}));
   if(ticket!==memberSequence||group!==selected)return;
   $('member-count').textContent='共 '+data.total+' 位群友，匹配 '+data.matched+' 位'+(data.matched>data.limit?'；最多显示 '+data.limit+' 位，请缩小搜索范围':'');
   const table=node('table'),head=node('tr');for(const title of ['群友','额外昵称','标记','证据 / 说明','操作'])head.append(node('th',title));table.append(head);
   for(const member of data.members){
-    const row=node('tr'),person=node('td'),names=node('td',member.aliases?.join('、')||'—'),type=node('td',memberLabelText(member.label)+(member.source==='manual'?' · 手动':member.source==='auto'?' · 自动推断':'')),evidence=node('td',(member.observations?'指令响应 '+member.observations+' 次。':'')+(member.note||'')),actions=node('td'),open=node('button','编辑资料');
+    const row=node('tr'),person=node('td'),names=node('td',member.aliases?.join('、')||'—'),type=node('td',memberLabelText(member.label)+' · '+memberSourceText(member.source)),evidence=node('td',(member.observations?'指令响应 '+member.observations+' 次。':'')+(member.note||'')),actions=node('td'),open=node('button','编辑资料');
     const name=member.card||member.nickname||member.qq_id,avatar=avatarNode('user',member.qq_id,name,'group-avatar',group);avatar.classList.add('member-avatar-button');avatar.setAttribute('role','button');avatar.tabIndex=0;avatar.setAttribute('aria-label','查看并标记群友 '+name);avatar.onclick=()=>openMember(member.qq_id,name);avatar.onkeydown=event=>{if(event.key==='Enter'||event.key===' '){event.preventDefault();avatar.click();}};
     const cell=node('div',undefined,'member-person');cell.append(avatar,node('span',name+' · '+member.qq_id));person.append(cell);open.type='button';open.onclick=()=>openMember(member.qq_id,name).catch(error=>toast(error.message,true));actions.append(open);row.append(person,names,type,evidence,actions);table.append(row);
   }
@@ -119,14 +124,14 @@ async function openMember(account,name){
   const member=data.members.find(item=>String(item.qq_id)===String(account))||{qq_id:String(account),nickname:name},person=$('member-dialog-person');memberEditor={group,account:String(account)};
   person.replaceChildren(avatarNode('user',account,name,'group-avatar',group),node('strong',member.card||member.nickname||name),node('span',String(account),'code'));
   $('member-dialog-label').value=member.manual_label||'auto';$('member-dialog-aliases').value=(member.aliases||[]).join(', ');$('member-dialog-note').value=member.note||'';
-  $('member-dialog-evidence').textContent='当前：'+memberLabelText(member.label)+(member.source==='manual'?'（手动）':member.source==='auto'?'（自动推断）':'')+'；独立指令响应 '+(member.observations||0)+' 次。'+(member.evidence||[]).map(item=>item.command+' → 消息 '+item.response_id).join('；');
+  $('member-dialog-evidence').textContent=memberEvidence(member);
   $('member-dialog-result').textContent='';if(!$('member-dialog').open)$('member-dialog').showModal();
 }
 $('member-dialog-close').onclick=()=>{$('member-dialog').close();memberEditor=null;};
 $('member-dialog-form').onsubmit=async event=>{event.preventDefault();if(!memberEditor)return;const editor={...memberEditor},button=$('member-dialog-save');button.disabled=true;try{
   const aliases=$('member-dialog-aliases').value.split(/[,，\n]/).map(name=>name.trim()).filter(Boolean);
   const saved=await act({action:'member_label',group:editor.group,account:editor.account,label:$('member-dialog-label').value,aliases,note:$('member-dialog-note').value},button);
-  $('member-dialog-evidence').textContent='当前：'+memberLabelText(saved.member.label)+(saved.member.source==='manual'?'（手动）':saved.member.source==='auto'?'（自动推断）':'')+'；独立指令响应 '+saved.member.observations+' 次。';
+  $('member-dialog-evidence').textContent=memberEvidence(saved.member);
   $('member-dialog-label').value=saved.member.manual_label||'auto';$('member-dialog-aliases').value=(saved.member.aliases||[]).join(', ');$('member-dialog-note').value=saved.member.note||'';
   $('member-dialog-result').textContent='已保存，后续回复使用此标记和昵称';if(currentTab==='members'&&selected===editor.group)await loadMembers();
 }catch(error){$('member-dialog-result').textContent=error.message;}finally{button.disabled=false;}};

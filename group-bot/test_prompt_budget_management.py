@@ -81,7 +81,7 @@ class PromptBudgetTests(unittest.TestCase):
 
     def test_member_labels_and_aliases_fit_with_source_and_quote(self):
         context,target=self.turn()
-        target['_identity_snapshot']['sender'].update(account_label='AI',label_source='manual',aliases=['千柒','aaaa'])
+        target['_identity_snapshot']['sender'].update(account_label='AI',label_source='manual',aliases=['千柒','aaaa'],account_note='喜欢节奏游戏，常分享自己的游玩记录。'*10)
         target['_reference_pages']=[{'status':'read','title':'实际来源','body':'具体仓库事实。'*200}]
         prompt=bot.build_prompt(bot.settings(),context,'被@',target);payload=self.unpack(prompt)
         self.assertLessEqual(len(prompt),6000)

@@ -1084,6 +1084,16 @@ def build_prompt(cfg, context, trigger, target):
     if len(render()) > limit:
         deduplicate_metadata(payload)
     if len(render()) > limit:
+        identities=payload.get('group_identities',{})
+        people=identities.get('recent_members',[])+identities.get('mentioned_members',[])+[identities.get(key,{}) for key in ('quoted_sender','self','sender')]
+        for person in people:
+            if len(render())<=limit:break
+            value=person.get('account_note','')
+            if not value:continue
+            retained=max(0,len(value)-(len(render())-limit)-8)
+            if retained:person['account_note']=value[:retained]
+            else:person.pop('account_note',None)
+    if len(render()) > limit:
         error=PromptBudgetError(limit,len(core_prompt),len(prompt)-len(core_prompt),payload)
         debug_events.emit('decision',role='prompt_budget',level='ERROR',text=json.dumps(error.budget,ensure_ascii=False))
         raise error
@@ -1127,6 +1137,7 @@ def build_sticker_prompt(cfg,context,target):
         'recent_chat':[{'speaker':str(item.get('sender',''))[:40],'text':str(item.get('text',''))[:100],
             'is_bot':bool(item.get('is_bot'))} for item in list(context)[-5:]],
         'delivery_options':target.get('_delivery_options',[]),'delivery_preferences':target.get('_delivery_preferences',{})}
+    payload['group_identities']=identity_facts(cfg,target)
     def render():return prefix+json.dumps(payload,ensure_ascii=False,separators=(',',':'))
     limit=cfg.get('max_prompt_chars',6000)
     while len(render())>limit and payload['recent_chat']:payload['recent_chat'].pop(0)
@@ -1136,9 +1147,14 @@ def build_sticker_prompt(cfg,context,target):
     return render()
 
 
-async def generate_reply_json(cfg, prompt, target, images=None):
+async def generate_reply_json(cfg, prompt, target, images=None, context=()):
     name = 'reply.mention.schema.json' if target.get('at_bot') else 'reply.schema.json'
     spec = json.loads((ROOT / name).read_text(encoding='utf-8'))
+    from member_model import update_schema
+    profile_schema=update_schema(cfg,target,context) if not target.get('_member_profile_analyzed') else None
+    if profile_schema:
+        spec['properties']['member_updates']=profile_schema
+        spec['required'].append('member_updates')
     spec['properties']['reply_to']['const'] = str(target.get('_id', 'target'))
     if target.get('_passive_turn') and target.get('_accepted_plan',{}).get('action') in {'reply','sticker'}:
         spec['properties']['should_reply']['const']=True
@@ -1207,14 +1223,17 @@ async def generate(cfg, context, trigger, target, images=None):
     if media_only:target['_accepted_plan']={**target.get('_accepted_plan',{}),'action':'sticker'}
     suffix = ('\n这次是直接@你的消息，should_reply=true。聊天给短回应；需要画图时action=generate_image、text可为空，由程序执行。不要输出分析或长篇解释。'
         if target.get('at_bot') else '')
+    from member_model import update_schema,INSTRUCTION
+    profile_instruction=INSTRUCTION if not target.get('_member_profile_analyzed') and update_schema(cfg,target,context) else ''
     if read_source_available(target):
         suffix += '\n本轮网页已读取成功，以reference_pages.body和scope为依据。不要沿用旧的读取失败说法或把表达改写失败说成打不开网页；直接完成对方请求。区分原创与fork，没读源码不评源码质量。'
     if target.get('_accepted_plan',{}).get('action')=='sticker' and target.get('_reply_style',{}).get('allow_no_words_reaction'):
-        prompt=build_sticker_prompt(cfg,context,target)
+        prompt=build_sticker_prompt({**cfg,'max_prompt_chars':cfg.get('max_prompt_chars',6000)-len(profile_instruction)},context,target)
     else:
-        prompt = build_prompt({**cfg, 'max_prompt_chars': cfg.get('max_prompt_chars', 6000) - len(suffix)}, context, trigger, target) + suffix
+        prompt = build_prompt({**cfg, 'max_prompt_chars': cfg.get('max_prompt_chars', 6000) - len(suffix)-len(profile_instruction)}, context, trigger, target) + suffix
+    prompt=profile_instruction+prompt
     target['_prompt_media_ids']=prompt_media_ids(prompt) or []
-    result = await generate_reply_json(cfg, prompt, target, images)
+    result = await generate_reply_json(cfg, prompt, target, images, context)
     if media_only:
         # Enforce even if a provider returns prose despite the selector schema.
         result={**result,'text':'','text_parts':[],'action':'chat'}
@@ -1225,6 +1244,10 @@ async def generate(cfg, context, trigger, target, images=None):
         log.info('Reply planner selected a different message; rejected')
         return (await generated_failure_reply(cfg, context, target, 'text', ReplyFailure('invalid_answer'))
             if target.get('at_bot') else '')
+    from member_model import consume_updates
+    if not target.get('_member_profile_analyzed'):
+        consume_updates(cfg,target,context,result,RUNTIME)
+        if profile_instruction:target['_member_profile_analyzed']=True
     if result.get('conversation') == 'others' and not target.get('at_bot'):
         log.info('Reply planner chose to leave others conversation alone')
         return ''

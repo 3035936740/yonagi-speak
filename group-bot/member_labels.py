@@ -20,7 +20,7 @@ class MemberLabels:
     def mark(self,account,label,note='',aliases=None):
         account=qq_id(account)
         if not account or label not in LABELS|{'auto','clear'}:raise ValueError('请选择有效QQ号及AI / bot / 真人 / 自动判断')
-        if not isinstance(note,str) or len(note)>200:raise ValueError('标记说明最多200字')
+        if not isinstance(note,str) or len(note)>200:raise ValueError('账号说明最多200字')
         if aliases is not None:
             if not isinstance(aliases,list) or len(aliases)>10 or any(not isinstance(name,str) or not name.strip() or len(name)>40 for name in aliases):
                 raise ValueError('额外昵称最多10个，每个1～40字')
@@ -29,21 +29,30 @@ class MemberLabels:
             data=self.read()
             if label=='clear':
                 previous=data['members'].pop(account,{})
-                kept=aliases if aliases is not None else previous.get('aliases',[])
+                kept=aliases if aliases is not None else self.effective(previous)['aliases']
                 row={'aliases':kept,'updated_at':time.time()} if kept else {}
                 if row:data['members'][account]=row
                 self.save(data);return self.effective(row)
             row=data['members'].setdefault(account,{})
-            row.update(manual_label='' if label=='auto' else label,note=note,updated_at=time.time())
-            if aliases is not None:row['aliases']=aliases
+            old=self.effective(row)
+            row.update(manual_label='' if label=='auto' else label,updated_at=time.time())
+            if note!=old['note']:
+                row.update(note=note,manual_note_set=True);row.pop('model_note',None)
+            if aliases is not None and aliases!=old['aliases']:
+                row.update(aliases=aliases,manual_aliases_set=True);row.pop('model_aliases',None)
             self.save(data)
         return self.effective(row)
     @staticmethod
     def effective(row):
-        manual=row.get('manual_label','');automatic=row.get('auto_label','')
-        return {'label':manual or automatic or '', 'source':'manual' if manual else 'auto' if automatic else 'unmarked',
-            'manual_label':manual,'auto_label':automatic,'note':row.get('note',''),
-            'aliases':row.get('aliases',[]),
+        manual=row.get('manual_label','');automatic=row.get('auto_label','');model=row.get('model_label','')
+        manual_note=bool(row.get('manual_note_set') or row.get('note'))
+        manual_aliases=bool(row.get('manual_aliases_set') or row.get('aliases'))
+        return {'label':manual or model or automatic or '', 'source':'manual' if manual else 'model' if model else 'auto' if automatic else 'unmarked',
+            'manual_label':manual,'auto_label':automatic,'note':row.get('note','') if manual_note else row.get('model_note',''),
+            'note_source':'manual' if manual_note else 'model' if row.get('model_note') else 'unmarked',
+            'aliases':row.get('aliases',[]) if manual_aliases else row.get('model_aliases',[]),
+            'aliases_source':'manual' if manual_aliases else 'model' if row.get('model_aliases') else 'unmarked',
+            'model_history':row.get('model_history',[])[-6:],
             'observations':len(row.get('evidence',[])),'evidence':row.get('evidence',[])[-6:]}
     def facts(self):
         return {account:self.effective(row) for account,row in self.read().get('members',{}).items()}

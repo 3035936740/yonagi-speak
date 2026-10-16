@@ -4,6 +4,12 @@
     123456789
   ],
   "enabled": false,
+  "member_reference_type_enabled": true,
+  "member_reference_aliases_enabled": true,
+  "member_reference_note_enabled": true,
+  "member_model_type_enabled": false,
+  "member_model_aliases_enabled": false,
+  "member_model_note_enabled": false,
   "webui_host":"127.0.0.1",
   "webui_port":0,
   "model": "gpt-6-luna",

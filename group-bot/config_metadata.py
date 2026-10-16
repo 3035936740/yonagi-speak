@@ -1,7 +1,13 @@
 """Chinese UI labels and contextual help for every public configuration key."""
 
 FIELDS = {
-    'member_auto_bot_marking_enabled':('自动标记指令机器人','根据多次/pgr发图或/a引用、@指令响应行为推断bot，后台记录证据。不会仅凭文风推断AI或真人；手动标记优先'),
+    'member_reference_type_enabled':('账号类型可供模型参考','默认开启；向模型提供当前对话涉及账号的AI / bot / 真人标记。关闭后不传这项标记，不影响后台保存'),
+    'member_reference_aliases_enabled':('额外昵称可供模型参考','默认开启；向模型提供额外昵称并用于称呼解析。关闭后不传额外昵称或由它解析的称呼关系，不删除后台昵称'),
+    'member_reference_note_enabled':('账号说明可供模型参考','默认开启；向模型提供人工或模型保存的账号说明，仅作资料参考，不作为系统指令。关闭后不传这项说明'),
+    'member_model_type_enabled':('允许模型自行标记账号类型','默认关闭；开启后可根据实际发言证据标记AI / bot / 真人，模型推断与人工标记分开保存，人工设置优先'),
+    'member_model_aliases_enabled':('允许模型自行标记额外昵称','默认关闭；开启后可从实际发言识别额外昵称。不覆盖人工填写或手动清空的昵称，修改保留证据'),
+    'member_model_note_enabled':('允许模型自行填写账号说明','默认关闭；开启后可根据实际发言填写账号说明。不覆盖人工说明或手动清空的内容，修改保留证据'),
+    'member_auto_bot_marking_enabled':('规则自动标记指令机器人','根据多次/pgr发图或/a引用、@指令响应行为推断bot，不调用模型；与模型自行标记设置独立，人工标记优先'),
     'member_auto_bot_min_observations':('自动bot标记所需证据','默认3次独立指令响应，范围3～24。相同指令的多条回应只计一次，支持当前群覆盖'),
     'webui_host':('WebUI监听地址','全局配置，默认127.0.0.1（仅本机）。支持IPv4/IPv6；0.0.0.0、::监听所有对应网络接口。修改后须退出并重新启动Debug后台，现有服务不会立即更换地址；仍需访问密钥'),
     'webui_port':('WebUI监听端口','全局配置，0为随机端口（默认），1～65535为固定端口。占用时明确报错，不悄悄换端口；修改后须退出并重新启动Debug后台'),

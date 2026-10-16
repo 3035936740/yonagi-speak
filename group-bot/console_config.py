@@ -14,6 +14,8 @@ from storage_io import atomic_write_text, read_text
 
 DEFAULTS = {'bot_name':'yonagi', 'bot_aliases':['Ethereal Paradise','EP'],'avatar_remote_enabled':False,
     'member_auto_bot_marking_enabled':True,'member_auto_bot_min_observations':3,
+    'member_reference_type_enabled':True,'member_reference_aliases_enabled':True,'member_reference_note_enabled':True,
+    'member_model_type_enabled':False,'member_model_aliases_enabled':False,'member_model_note_enabled':False,
     'model_timeout_seconds':30,'vision_timeout_seconds':60,'image_timeout_seconds':150,
     'chat_image_display':'image',
     'webui_host':'127.0.0.1','webui_port':0,
