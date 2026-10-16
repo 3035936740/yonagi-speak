@@ -56,6 +56,7 @@ from image_memory import ImageMemory, source_key as image_source_key
 from image_recognition import ImageRecognition
 from image_archive import ImageArchive
 from member_labels import MemberLabels
+from member_policy import blocked_accounts,is_blocked,model_view,clean_data,MemberBlocked
 from model_timeouts import request_timeout,vision_config
 from sticker_prefill import StickerPrefill
 from image_sources import validate_source, ImageDownloadError, failure_details as image_failure_details
@@ -381,6 +382,7 @@ def wants_image(target):
 
 
 async def generate_for_message(client, cfg, context, trigger, target, as_image=False):
+    context,target=model_view(RUNTIME,context,target)
     target['_system_intervention_ids']=list(cfg.get('_intervention_ids',[]))
     target['_peer_reply_enabled']=cfg.get('peer_reply_enabled',True)
     target['_peer_scene']=peer_reply.scene(target,context) if target['_peer_reply_enabled'] else {}
@@ -400,6 +402,7 @@ async def generate_for_message(client, cfg, context, trigger, target, as_image=F
     if addressed:
         avatars = requested_avatars(target)
         for uid, label in avatars:
+            if uid in blocked_accounts(RUNTIME):continue
             if uid not in {str(target.get('_uid')), str(target.get('_self_id'))}:
                 try:
                     await api(client, dotenv_values(cfg['mcp_env_file']), 'get_group_member_info',
@@ -533,6 +536,7 @@ async def generate_for_message(client, cfg, context, trigger, target, as_image=F
                 roles['vision'] = {key: value for key, value in cached[0].items() if key not in {'image_index', 'source_label'}}
         else:
             roles = await analyze_roles(cfg, context, adjusted, list(vision_paths), generate_json, RUNTIME, vision_only=as_image)
+        context,adjusted=model_view(RUNTIME,context,adjusted)
         adjusted['_role_analysis'] = roles
         log.info('Image summary reuse; summaries=%s; original_inputs=%s; source_id=%s',
             len(cached), len(paths), reference.get('source_id'))
@@ -818,7 +822,8 @@ async def generated_failure_reply(cfg, context, target, kind, error):
 
 
 def build_prompt(cfg, context, trigger, target):
-    limit = cfg.get('max_prompt_chars', 6000)
+    context,target=model_view(RUNTIME,context,target)
+    limit = cfg.get('max_prompt_chars', 12800)
     message_limit = cfg.get('context_message_chars', 300)
     def compact(item, target_item=False):
         result = {'sender': str(item.get('sender', ''))[:40],
@@ -1123,6 +1128,7 @@ def prompt_media_ids(prompt):
 
 
 def build_sticker_prompt(cfg,context,target):
+    context,target=model_view(RUNTIME,context,target)
     """The accepted media-only action needs a selector, not the full text reply."""
     persona=prompt_path(ROOT,cfg,'persona').read_text(encoding='utf-8').replace('yonagi',cfg.get('bot_name','yonagi'))
     prefix=persona+'\n本轮规划已选择纯表情，仅执行选图。结合最近群聊情绪，按media_ids顺序选择最多'+str(cfg.get('max_stickers_per_reply',3))+'个真实id，可只选一张；text为空，不描述图片或OCR、不改成文字、不使用工具。'
@@ -1139,7 +1145,7 @@ def build_sticker_prompt(cfg,context,target):
         'delivery_options':target.get('_delivery_options',[]),'delivery_preferences':target.get('_delivery_preferences',{})}
     payload['group_identities']=identity_facts(cfg,target)
     def render():return prefix+json.dumps(payload,ensure_ascii=False,separators=(',',':'))
-    limit=cfg.get('max_prompt_chars',6000)
+    limit=cfg.get('max_prompt_chars',12800)
     while len(render())>limit and payload['recent_chat']:payload['recent_chat'].pop(0)
     while len(render())>limit and len(choices)>1:choices.pop()
     if len(render())>limit:raise ValueError('Sticker selector exceeds character budget')
@@ -1201,6 +1207,7 @@ async def generate_reply_json(cfg, prompt, target, images=None, context=()):
 
 
 async def generate(cfg, context, trigger, target, images=None):
+    context,target=model_view(RUNTIME,context,target)
     target['_system_intervention_ids']=list(cfg.get('_intervention_ids',[]))
     target['_peer_reply_enabled']=cfg.get('peer_reply_enabled',True)
     target['_peer_scene']=peer_reply.scene(target,context) if target['_peer_reply_enabled'] else {}
@@ -1223,14 +1230,14 @@ async def generate(cfg, context, trigger, target, images=None):
     if media_only:target['_accepted_plan']={**target.get('_accepted_plan',{}),'action':'sticker'}
     suffix = ('\n这次是直接@你的消息，should_reply=true。聊天给短回应；需要画图时action=generate_image、text可为空，由程序执行。不要输出分析或长篇解释。'
         if target.get('at_bot') else '')
-    from member_model import update_schema,INSTRUCTION
-    profile_instruction=INSTRUCTION if not target.get('_member_profile_analyzed') and update_schema(cfg,target,context) else ''
+    from member_model import update_schema,instruction as profile_rules
+    profile_instruction=profile_rules(cfg,target,context) if not target.get('_member_profile_analyzed') and update_schema(cfg,target,context) else ''
     if read_source_available(target):
         suffix += '\n本轮网页已读取成功，以reference_pages.body和scope为依据。不要沿用旧的读取失败说法或把表达改写失败说成打不开网页；直接完成对方请求。区分原创与fork，没读源码不评源码质量。'
     if target.get('_accepted_plan',{}).get('action')=='sticker' and target.get('_reply_style',{}).get('allow_no_words_reaction'):
-        prompt=build_sticker_prompt({**cfg,'max_prompt_chars':cfg.get('max_prompt_chars',6000)-len(profile_instruction)},context,target)
+        prompt=build_sticker_prompt({**cfg,'max_prompt_chars':cfg.get('max_prompt_chars',12800)-len(profile_instruction)},context,target)
     else:
-        prompt = build_prompt({**cfg, 'max_prompt_chars': cfg.get('max_prompt_chars', 6000) - len(suffix)-len(profile_instruction)}, context, trigger, target) + suffix
+        prompt = build_prompt({**cfg, 'max_prompt_chars': cfg.get('max_prompt_chars', 12800) - len(suffix)-len(profile_instruction)}, context, trigger, target) + suffix
     prompt=profile_instruction+prompt
     target['_prompt_media_ids']=prompt_media_ids(prompt) or []
     result = await generate_reply_json(cfg, prompt, target, images, context)
@@ -1247,6 +1254,7 @@ async def generate(cfg, context, trigger, target, images=None):
     from member_model import consume_updates
     if not target.get('_member_profile_analyzed'):
         consume_updates(cfg,target,context,result,RUNTIME)
+        model_view(RUNTIME,context,target)
         if profile_instruction:target['_member_profile_analyzed']=True
     if result.get('conversation') == 'others' and not target.get('at_bot'):
         log.info('Reply planner chose to leave others conversation alone')
@@ -1327,7 +1335,7 @@ async def generate(cfg, context, trigger, target, images=None):
             repair_hint+='自然避开性别话题或接当前的轻逗，不能解释性别设定、规则或“不强调性别”的原则，不用“叫我名字就好”的客服收尾。'
         if issue in {'out_of_character_identity','unsupported_real_identity'}:
             repair_hint+='保持yonagi角色，用当前群聊语气自然绕开身份追问或接一下梗；不靠AI/模型/没有生理性别解释自己，也不改成声称是真人或编造身体与现实经历。'
-        repair_prompt = build_prompt({**cfg, 'max_prompt_chars': cfg.get('max_prompt_chars', 6000) - len(repair_hint)}, context, trigger, target) + repair_hint
+        repair_prompt = build_prompt({**cfg, 'max_prompt_chars': cfg.get('max_prompt_chars', 12800) - len(repair_hint)}, context, trigger, target) + repair_hint
         target['_prompt_media_ids']=prompt_media_ids(repair_prompt) or []
         try:
             repaired = await generate_reply_json(cfg, repair_prompt, target, images)
@@ -1421,9 +1429,9 @@ def checked_tool_activity(stdout, cfg):
 
 async def generate_json(cfg, prompt, schema, images=None):
     output = RUNTIME / ('result-' + uuid.uuid4().hex + '.json')
-    if len(prompt) > cfg.get('max_prompt_chars', 6000):
+    if len(prompt) > cfg.get('max_prompt_chars', 12800):
         raise ValueError('Model input exceeds character budget')
-    log.info('Model input chars=%s; cap=%s', len(prompt), cfg.get('max_prompt_chars', 6000))
+    log.info('Model input chars=%s; cap=%s', len(prompt), cfg.get('max_prompt_chars', 12800))
     command = [resolve_codex_executable(cfg.get('codex_exe','auto'),ROOT), 'exec', '--ignore-user-config',
         '--ephemeral', '--skip-git-repo-check', '--sandbox', 'read-only',
         '-c', 'features.shell_tool=false', '-c', 'features.unified_exec=false',
@@ -1571,6 +1579,7 @@ async def _run(smoke=False):
                 log.info('表情库本地文件检查；已迁移=%s；不可用=%s',asset_report['migrated'],asset_report['unavailable'])
         language = StyleMemory(RUNTIME / 'style-memory.json')
         memory = GroupMemory(RUNTIME / 'group-memory.sqlite3')
+        memory.set_blocked(blocked_accounts(RUNTIME))
         social = SocialState(RUNTIME / 'social-state.json',cfg.get('conversation_state_ttl_seconds',600))
         passive=PassiveScheduler(RUNTIME/'passive-participation.json',self_id)
         learning_job, learning_batch = None, []
@@ -1602,6 +1611,10 @@ async def _run(smoke=False):
                 debug_events.emit('sent' if item['is_bot'] else 'received', text=item['text'],
                     sender=item['sender'], message_id=key, historical=True,time=item['_time'],
                     **debug_message_metadata(item,history))
+                if is_blocked(item,blocked_accounts(RUNTIME)):
+                    remember(key)
+                    if key not in history_ids:history.append(item);journal.append(item);history_ids.add(key)
+                    continue
                 item['_image_repetition'] = image_memory.observe(key, list(item.get('_image_keys', {}).values()))
                 focus.annotate(item)
                 item['_audience'] = audience(item, history, self_id)
@@ -1705,7 +1718,8 @@ async def _run(smoke=False):
                         summary = None
                 return image_memory.lookup(key=key) or summary
         image_reader = ImageRecognition(image_memory, recognize_image, publish_vision,
-            lambda: 'text' not in active_jobs and not pending_mentions)
+            lambda: 'text' not in active_jobs and not pending_mentions,
+            allow_item=lambda item:not is_blocked(item,blocked_accounts(RUNTIME)))
         image_worker = asyncio.create_task(image_reader.collector())
         async def classify_sticker(path, key):
             nonlocal daily_calls
@@ -1750,6 +1764,7 @@ async def _run(smoke=False):
             log.info('Sticker admission; type=%s; accepted=%s', entry.get('asset_type', 'unavailable'), sticker_filter.accepts(entry, key))
             return entry
         emojis.classifier = classify_sticker
+        emojis.allow_candidate=lambda data: (not blocked_accounts(RUNTIME) or str(data.get('_source_user_id','')) not in blocked_accounts(RUNTIME) and bool(data.get('_source_user_id')))
         emoji_worker = asyncio.create_task(emojis.collector(client))
         log.info('Started; group=%s; self=%s; recent unseen mentions preserved', cfg['group_id'], self_id)
         manual_outbox=ManualOutbox(ROOT,cfg['group_id'])
@@ -1769,8 +1784,25 @@ async def _run(smoke=False):
                 reply_times.append(request['sent_at']);own_replies.append(request['text'])
                 debug_events.emit('sent',text=request['text'],sender=cfg['bot_name'],message_id=item['_id'],
                     user_id=str(self_id),manual=True,request_id=request['id'],time=request['sent_at'],origin='manual')
+        known_excluded=blocked_accounts(RUNTIME)
         while not (RUNTIME / 'STOP').exists():
             cfg = settings()
+            excluded=blocked_accounts(RUNTIME)
+            if excluded-known_excluded:
+                cancelled=[job['task'] for job in active_jobs.values()]
+                for task in cancelled:task.cancel()
+                await asyncio.gather(*cancelled,return_exceptions=True)
+                active_jobs.clear()
+                if learning_job:
+                    learning_job.cancel();await asyncio.gather(learning_job,return_exceptions=True)
+                    learning_job,learning_batch=None,[]
+                image_worker.cancel();await asyncio.gather(image_worker,return_exceptions=True)
+                await image_reader.close()
+                image_worker=asyncio.create_task(image_reader.collector())
+            known_excluded=excluded
+            memory.set_blocked(excluded)
+            passive.pending={key:item for key,item in passive.pending.items() if not is_blocked(item,excluded)}
+            pending_mentions=deque(item for item in pending_mentions if not is_blocked(item,excluded))
             if identity_job.done() and time.time()-identities.last_refresh>=600:
                 identity_job=asyncio.create_task(identities.refresh(client,env,cfg['group_id'],api))
             cfg['_image_memory'] = image_memory
@@ -1830,6 +1862,9 @@ async def _run(smoke=False):
                     debug_events.emit('sent' if item['is_bot'] else 'received', text=item['text'],
                         sender=item['sender'], message_id=key,time=item['_time'],
                         **debug_message_metadata(item,history))
+                    if is_blocked(item,excluded):
+                        history.append(item);journal.append(item)
+                        continue
                     item['_image_repetition'] = image_memory.observe(key, list(item.get('_image_keys', {}).values()))
                     if str(msg.get('user_id')) == str(self_id):
                         received_ids=set(emojis.received_ids(msg))
@@ -1849,7 +1884,8 @@ async def _run(smoke=False):
                     if not text:
                         continue
                     item['_sticker_ids'] = emojis.received_ids(msg)
-                    item['_audience'] = await classify_audience(client, env, item, history, self_id, focus)
+                    safe_history,_=model_view(RUNTIME,history,item)
+                    item['_audience'] = await classify_audience(client, env, item, safe_history, self_id, focus)
                     if item.get('_reply_id'):
                         debug_events.update_message(key,item['text'],**debug_message_metadata(item,history))
                     item['_addressed_names'] = list(dict.fromkeys(m['sender'] for m in history if m.get('_uid') in item.get('_at_ids', [])))[:4]
@@ -1877,6 +1913,10 @@ async def _run(smoke=False):
                 allowed = (daily_calls < cfg['max_model_calls_per_day']
                     and len(reply_times) < cfg['max_replies_per_day'] and hourly < cfg['max_replies_per_hour'])
                 target, trigger = None, ''
+                visible_history=clean_data(list(history),excluded)
+                incoming=clean_data(incoming,excluded)
+                from member_policy import owner_priority
+                if cfg.get('member_reference_type_enabled',True):owner_priority(incoming,member_labels.facts(),self_id)
                 mentions = group_mentions(incoming, wants_image)
                 queued_ids = {key for m in list(pending_mentions) + [job['target'] for job in active_jobs.values()]
                     for key in m.get('_source_ids', [m.get('_id')])}
@@ -1902,30 +1942,31 @@ async def _run(smoke=False):
                 if target is None:
                     blocked=('model_budget' if daily_calls>=cfg['max_model_calls_per_day'] else 'reply_budget' if not allowed
                         else 'direct_call_priority' if pending_mentions else 'text_job_running' if 'text' in active_jobs else None)
-                    decision=passive.check(cfg,history,now,last_send,blocked)
+                    decision=passive.check(cfg,visible_history,now,last_send,blocked)
                     if decision.get('target'):
                         target=decision['target'];trigger='群聊轮次接话；'+decision['reason']
                         passive.consume(target['_passive_batch_ids'],now)
                 if target:
-                    target = dict(target)
+                    if is_blocked(target,excluded):continue
+                    visible_history,target=model_view(RUNTIME,history,target)
                     passive.forced(target,now)
                     debug_events.emit('trigger', text=trigger, sender=target.get('sender'),
                         message_id=target.get('_id'), audience=target.get('_audience'))
                     remaining_delivery = target.pop('_remaining_delivery', None)
                     target['_self_id'] = str(self_id)
-                    identities.annotate(target,history,cfg)
+                    identities.annotate(target,visible_history,cfg)
                     target['_social_act'] = social_act(target['text'])
-                    target['_interaction_memory'] = interaction.retrieve(target)
-                    target['_conversation_state'] = social.snapshot(target) if cfg.get('social_planner_enabled',True) else {}
+                    target['_interaction_memory'] = {} if excluded else interaction.retrieve(target)
+                    target['_conversation_state'] = social.snapshot(target) if not excluded and cfg.get('social_planner_enabled',True) else {}
                     target['_person_profile'] = memory.profile(target) if cfg.get('memory_enabled',True) else {}
                     target['_jargon'] = memory.jargon(target['text']) if cfg.get('memory_enabled', True) else []
                     target['_passive_visual'] = bool(not target.get('at_bot') and target.get('_images') and
                         (target.get('_passive_turn') or len(re.sub(r'@\d+|\[[^\]]*\]', '', target['text']).strip()) >= 4))
                     if target.get('_audience') == 'direct':
                         target['at_bot'] = True
-                    target['_dialogue_reference'] = {'speaker': target['sender'], 'audience': target.get('_audience', 'direct' if target['at_bot'] else 'open'), 'group_names': list(dict.fromkeys(m['sender'] for m in history))[-12:]}
+                    target['_dialogue_reference'] = {'speaker': target['sender'], 'audience': target.get('_audience', 'direct' if target['at_bot'] else 'open'), 'group_names': list(dict.fromkeys(m['sender'] for m in visible_history))[-12:]}
                     if target.get('_audience') == 'possibly_direct':
-                        previous_bot = next((m for m in reversed(history) if m.get('is_bot')), None)
+                        previous_bot = next((m for m in reversed(visible_history) if m.get('is_bot')), None)
                         if previous_bot:
                             target['_dialogue_reference']['possible_continuation'] = {
                                 'feedback_on_previous_answer': bool(target.get('_feedback_on_answer')),
@@ -1934,7 +1975,7 @@ async def _run(smoke=False):
                                 'previous_question': previous_bot.get('_reply_to_text', '')[:200]}
                             if target.get('_feedback_on_answer'):
                                 target['_dialogue_reference']['possible_continuation']['request'] = '可能没看懂刚才的回答；若确实在问你，换成简单的话解释，不重复专业术语或只贴表情'
-                        previous_human = next((m for m in reversed(history) if not m.get('is_bot')
+                        previous_human = next((m for m in reversed(visible_history) if not m.get('is_bot')
                             and m.get('_id') != target.get('_id')), None)
                         if previous_human:
                             target['_dialogue_reference']['latest_exchange'] = {
@@ -1942,19 +1983,19 @@ async def _run(smoke=False):
                                 'audience': previous_human.get('_audience', 'open')}
                     if call_only(target['text']):
                         target['_dialogue_reference']['social_act'] = '可能在玩称呼或认亲梗；接称呼语气，不是询问客服是否在岗，不自动反问要什么服务'
-                    target['_learned_style'] = language.retrieve(target['text'], limit=550) if cfg.get('style_learning_enabled', True) else {}
-                    if cfg.get('style_learning_enabled',True) and cfg.get('style_adaptation_strength',.35)>0:
+                    target['_learned_style'] = {} if excluded else language.retrieve(target['text'], limit=550) if cfg.get('style_learning_enabled', True) else {}
+                    if not excluded and cfg.get('style_learning_enabled',True) and cfg.get('style_adaptation_strength',.35)>0:
                         target['_learned_style']['adaptive_voice'] = language.voice_profile(cfg.get('style_adaptation_strength',.35))
                     target['_expressions'] = memory.expressions(target['text']) if cfg.get('style_learning_enabled', True) else []
-                    target['_memories'] = memory.retrieve(target, history) if cfg.get('memory_enabled', True) else []
+                    target['_memories'] = memory.retrieve(target, visible_history) if cfg.get('memory_enabled', True) else []
                     if cfg.get('semantic_selection_enabled',True):
                         budget=cfg.get('semantic_candidate_chars',900)
-                        target['_expression_candidates']=memory.candidates(target,history,True,budget) if cfg.get('style_learning_enabled',True) else []
-                        target['_memory_candidates']=memory.candidates(target,history,False,budget) if cfg.get('memory_enabled',True) else []
+                        target['_expression_candidates']=memory.candidates(target,visible_history,True,budget) if cfg.get('style_learning_enabled',True) else []
+                        target['_memory_candidates']=memory.candidates(target,visible_history,False,budget) if cfg.get('memory_enabled',True) else []
                     log.info('Context retrieval; memories=%s; expressions=%s; ending_habits=%s',
                         len(target['_memories']), len(target['_expressions']), len(target['_learned_style'].get('ending_habits', [])))
-                    target['_recent_bot_replies'] = list(own_replies)
-                    recent_bot_turns = [item for item in list(history)[-16:] if item.get('is_bot')
+                    target['_recent_bot_replies'] = [] if excluded else list(own_replies)
+                    recent_bot_turns = [item for item in visible_history[-16:] if item.get('is_bot')
                         and 0 <= target.get('_time', time.time()) - item.get('_time', 0) <= 300]
                     target['_recent_bot_media_count'] = sum(bool(item.get('_media_sent'))
                         for item in recent_bot_turns[-4:])
@@ -1986,12 +2027,12 @@ async def _run(smoke=False):
                         else:
                             daily_calls -= 1  # no original image/model task was started
                             active_jobs[lane] = {'task': asyncio.create_task(generated_failure_reply(
-                                {**cfg, '_reserve_extra_call': reserve_extra_call}, list(history), target,
+                                {**cfg, '_reserve_extra_call': reserve_extra_call}, visible_history, target,
                                 'image', ReplyFailure('image_limit'))), 'target': target,
                                 'trigger': trigger, 'kind': 'text', 'failure_recovery': True}
                     if lane not in active_jobs:
                         active_jobs[lane] = {'task': asyncio.create_task(traced_generate_for_message(client,
-                            {**cfg, '_reserve_extra_call': reserve_extra_call}, list(history), trigger, target, as_image=lane == 'image')),
+                            {**cfg, '_reserve_extra_call': reserve_extra_call}, visible_history, trigger, target, as_image=lane == 'image')),
                             'target': target, 'trigger': trigger, 'kind': lane}
                     checkpoint_pending()
                 # This is separate from ordinary group-turn scheduling. A fresh
@@ -2026,6 +2067,12 @@ async def _run(smoke=False):
                     log.info('Proactive topic research started; category=%s', category)
                 # Polling continues while independent text and image jobs are running.
                 for lane, job in list(active_jobs.items()):
+                    if is_blocked(job['target'],blocked_accounts(RUNTIME)):
+                        job['task'].cancel()
+                        await asyncio.gather(job['task'],return_exceptions=True)
+                        active_jobs.pop(lane,None)
+                        log.info('Reply skipped; member blocked; account=%s',job['target'].get('_uid'))
+                        continue
                     task = job['task']
                     if not task.done():
                         continue
@@ -2066,12 +2113,16 @@ async def _run(smoke=False):
                                     checkpoint_pending()
                                     continue
                     except Exception as exc:
+                        if isinstance(exc,MemberBlocked):
+                            log.info('Reply skipped; member blocked; account=%s',target.get('_uid'))
+                            active_jobs.pop(lane,None)
+                            continue
                         log.warning('Reply job failed; kind=%s; reason=%s', job['kind'], str(exc)[:160])
                         if target.get('_passive_turn'):passive.outcome('job_failed',target)
                         if target.get('at_bot') and not job.get('failure_recovery'):
                             # Recover in a separate task so polling and other replies keep moving.
                             job['task'] = asyncio.create_task(generated_failure_reply(
-                                {**cfg, '_reserve_extra_call': reserve_extra_call}, list(history),
+                                {**cfg, '_reserve_extra_call': reserve_extra_call}, visible_history,
                                 target, job['kind'], exc))
                             job['kind'], job['failure_recovery'] = 'text', True
                             checkpoint_pending()
@@ -2115,6 +2166,7 @@ async def _run(smoke=False):
                         def can_send():
                             active_cfg = settings()
                             return (not (RUNTIME / 'STOP').exists() and active_cfg['enabled']
+                                and not is_blocked(target,blocked_accounts(RUNTIME))
                                 and sum(time.time() - t < 3600 for t in reply_times) < active_cfg['max_replies_per_hour']
                                 and len(reply_times) < active_cfg['max_replies_per_day'])
                         def record_part(sent, part):

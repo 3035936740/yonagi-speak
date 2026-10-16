@@ -12,6 +12,8 @@ const categories=[
   ['identity','身份与开关','Bot 叫什么、是否启用、在哪些群工作',key=>['enabled','bot_name','bot_aliases','chat_group_whitelist'].includes(key)],
   ['model','模型','生成回复用的模型、思考强度和分工角色',key=>/^(model|reasoning_effort|fast_mode|multi_role_enabled|role_models|role_timeout_seconds|model_timeout_seconds|text_transport)$/.test(key)],
   ['member-reference','群友资料：模型参考','选择允许传给模型参考的账号资料，默认全部开启',key=>/^member_reference_/.test(key)],
+  ['member-prompts','群友资料：类型提示词','按当前发言者的账号类型使用，支持全局及群覆盖',key=>/^member_prompt_/.test(key)],
+  ['member-block','群友资料：屏蔽规则','默认关闭自动屏蔽；人工解除优先，后台仍保留消息',key=>/^member_model_block_/.test(key)],
   ['member-model','群友资料：模型自行标记','独立控制模型修改三项资料的权限，默认全部关闭；人工资料优先',key=>/^member_model_/.test(key)],
   ['member-rules','群友资料：规则判断','按指令响应行为推断bot，不调用模型',key=>/^member_auto_/.test(key)],
   ['participation','参与群聊的节奏','多久说一次话、什么时候接话、怎么回复',key=>/^passive_|^proactive_|^(adaptive_participation_enabled|social_planner_enabled|conversation_state_ttl_seconds|mention_cooldown_seconds|poll_seconds|peer_reply_enabled|at_reply_probability|quote_reply_probability|burst_reply_probability|friendly_tease_probability)$/.test(key)],
@@ -102,16 +104,16 @@ function renderGroups(){
 function selectGroup(group){stashPromptDraft();selected=group;selectedEvent=null;lastEvents='';configData=null;databaseData=null;dbSequence++;$('db-add').disabled=true;$('settings').replaceChildren(node('div','正在读取这个群的设置…','empty'));poll(true).then(()=>loadActivePane()).catch(error=>toast(error.message,true));}
 
 let memberSequence=0,memberEditor=null,memberEditorSequence=0;
-const memberLabelText=value=>({AI:'AI',bot:'bot',human:'真人'}[value]||'未标记');
+const memberLabelText=value=>({AI:'AI',bot:'bot',human:'真人',owner:'bot主'}[value]||'未标记');
 const memberSourceText=value=>({manual:'手动',model:'模型推断',auto:'规则推断'}[value]||'未标记');
-function memberEvidence(member){return '当前：'+memberLabelText(member.label)+'（'+memberSourceText(member.source)+'）；独立指令响应 '+(member.observations||0)+' 次。'+(Object.keys(member.prefix_counts||{}).length?'各前缀：'+Object.entries(member.prefix_counts).map(([prefix,count])=>prefix+' '+count+'次').join('、')+'。':'')+(member.evidence||[]).map(item=>item.command+' → 消息 '+item.response_id).join('；')+(member.model_history?.length?' 模型资料修改：'+member.model_history.map(item=>({account_type:'账号类型',extra_names:'额外昵称',account_note:'账号说明'}[item.field]||item.field)+' · 证据 '+item.evidence_message_ids.join('、')).join('；'):'');}
+function memberEvidence(member){return (member.blocked?'已屏蔽（'+memberSourceText(member.block_source)+'），不进入模型。':'')+'当前：'+memberLabelText(member.label)+'（'+memberSourceText(member.source)+'）；独立指令响应 '+(member.observations||0)+' 次。'+(Object.keys(member.prefix_counts||{}).length?'各前缀：'+Object.entries(member.prefix_counts).map(([prefix,count])=>prefix+' '+count+'次').join('、')+'。':'')+(member.evidence||[]).map(item=>item.command+' → 消息 '+item.response_id).join('；')+(member.model_history?.length?' 模型资料修改：'+member.model_history.map(item=>({account_type:'账号类型',extra_names:'额外昵称',account_note:'账号说明'}[item.field]||item.field)+' · 证据 '+item.evidence_message_ids.join('、')).join('；'):'');}
 async function loadMembers(){
   const ticket=++memberSequence,group=selected,data=await api('/api/members?'+new URLSearchParams({group,q:$('member-search').value}));
   if(ticket!==memberSequence||group!==selected)return;
   $('member-count').textContent='共 '+data.total+' 位群友，匹配 '+data.matched+' 位'+(data.matched>data.limit?'；最多显示 '+data.limit+' 位，请缩小搜索范围':'');
   const table=node('table'),head=node('tr');for(const title of ['群友','额外昵称','标记','证据 / 说明','操作'])head.append(node('th',title));table.append(head);
   for(const member of data.members){
-    const row=node('tr'),person=node('td'),names=node('td',member.aliases?.join('、')||'—'),type=node('td',memberLabelText(member.label)+' · '+memberSourceText(member.source)),evidence=node('td',(member.observations?'指令响应 '+member.observations+' 次。':'')+(member.note||'')),actions=node('td'),open=node('button','编辑资料');
+    const row=node('tr'),person=node('td'),names=node('td',member.aliases?.join('、')||'—'),type=node('td',(member.blocked?'屏蔽 · ':'')+memberLabelText(member.label)+' · '+memberSourceText(member.source)),evidence=node('td',(member.observations?'指令响应 '+member.observations+' 次。':'')+(member.note||'')),actions=node('td'),open=node('button','编辑资料');
     const name=member.card||member.nickname||member.qq_id,avatar=avatarNode('user',member.qq_id,name,'group-avatar',group);avatar.classList.add('member-avatar-button');avatar.setAttribute('role','button');avatar.tabIndex=0;avatar.setAttribute('aria-label','查看并标记群友 '+name);avatar.onclick=()=>openMember(member.qq_id,name);avatar.onkeydown=event=>{if(event.key==='Enter'||event.key===' '){event.preventDefault();avatar.click();}};
     const cell=node('div',undefined,'member-person');cell.append(avatar,node('span',name+' · '+member.qq_id));person.append(cell);open.type='button';open.onclick=()=>openMember(member.qq_id,name).catch(error=>toast(error.message,true));actions.append(open);row.append(person,names,type,evidence,actions);table.append(row);
   }
@@ -121,19 +123,21 @@ async function openMember(account,name){
   const ticket=++memberEditorSequence,group=selected;
   const data=await api('/api/members?'+new URLSearchParams({group,q:account}));
   if(ticket!==memberEditorSequence||group!==selected)return;
-  const member=data.members.find(item=>String(item.qq_id)===String(account))||{qq_id:String(account),nickname:name},person=$('member-dialog-person');memberEditor={group,account:String(account)};
+  const member=data.members.find(item=>String(item.qq_id)===String(account))||{qq_id:String(account),nickname:name},person=$('member-dialog-person');memberEditor={group,account:String(account),blocked:Boolean(member.blocked),blockDirty:false};
   person.replaceChildren(avatarNode('user',account,name,'group-avatar',group),node('strong',member.card||member.nickname||name),node('span',String(account),'code'));
   $('member-dialog-label').value=member.manual_label||'auto';$('member-dialog-aliases').value=(member.aliases||[]).join(', ');$('member-dialog-note').value=member.note||'';
+  $('member-dialog-blocked').checked=Boolean(member.blocked);$('member-dialog-blocked').onchange=()=>{if(memberEditor)memberEditor.blockDirty=true;};
   $('member-dialog-evidence').textContent=memberEvidence(member);
   $('member-dialog-result').textContent='';if(!$('member-dialog').open)$('member-dialog').showModal();
 }
 $('member-dialog-close').onclick=()=>{$('member-dialog').close();memberEditor=null;};
 $('member-dialog-form').onsubmit=async event=>{event.preventDefault();if(!memberEditor)return;const editor={...memberEditor},button=$('member-dialog-save');button.disabled=true;try{
   const aliases=$('member-dialog-aliases').value.split(/[,，\n]/).map(name=>name.trim()).filter(Boolean);
-  const saved=await act({action:'member_label',group:editor.group,account:editor.account,label:$('member-dialog-label').value,aliases,note:$('member-dialog-note').value},button);
+  const saved=await act({action:'member_label',group:editor.group,account:editor.account,label:$('member-dialog-label').value,aliases,note:$('member-dialog-note').value,...(editor.blockDirty?{blocked:$('member-dialog-blocked').checked}:{})},button);
+  $('member-dialog-blocked').checked=Boolean(saved.member.blocked);if(memberEditor)memberEditor.blockDirty=false;
   $('member-dialog-evidence').textContent=memberEvidence(saved.member);
   $('member-dialog-label').value=saved.member.manual_label||'auto';$('member-dialog-aliases').value=(saved.member.aliases||[]).join(', ');$('member-dialog-note').value=saved.member.note||'';
-  $('member-dialog-result').textContent='已保存，后续回复使用此标记和昵称';if(currentTab==='members'&&selected===editor.group)await loadMembers();
+  $('member-dialog-result').textContent='已保存，后续处理按新资料与屏蔽设置生效';if(currentTab==='members'&&selected===editor.group)await loadMembers();
 }catch(error){$('member-dialog-result').textContent=error.message;}finally{button.disabled=false;}};
 $('member-form').onsubmit=async event=>{event.preventDefault();const group=selected;try{await act({action:'member_label',group,account:$('member-account').value.trim(),label:$('member-label').value,note:$('member-note').value},$('member-save'));if(group===selected)await loadMembers();}catch{}};
 $('member-refresh').onclick=()=>loadMembers().catch(error=>toast(error.message,true));
@@ -148,7 +152,7 @@ function eventSummary(row){let text=row.text||'';if(row.kind==='decision'){try{c
 function levelClass(row){return ['ERROR','CRITICAL'].includes(row.level)?'bad':row.level==='WARNING'?'warn':row.kind;}
 const recordViews=new Map();let recordViewScope='';
 function recordSignature(row){return JSON.stringify(['received','sent'].includes(row.kind)?
-  [row.text,row.sender,row.user_id,row.quote,row.manual,row.historical,row.level,(row.image_info||[]).map(image=>image.key),row.kind==='sent'?snapshot.status.name:'']:[row,snapshot.features]);}
+  [row.text,row.sender,row.user_id,row.quote,row.blocked,row.manual,row.historical,row.level,(row.image_info||[]).map(image=>image.key),row.kind==='sent'?snapshot.status.name:'']:[row,snapshot.features]);}
 function renderRecords(){
   const level=$('level-filter').value,rows=snapshot.events.filter(row=>level==='all'||(level==='WARNING'?['WARNING','ERROR','CRITICAL'].includes(row.level):['ERROR','CRITICAL'].includes(row.level)));
   const scope=selected+':'+(snapshot.status.chat_image_display||'image'),fingerprint=scope+level+snapshot.status.name+JSON.stringify(rows);
@@ -195,7 +199,7 @@ function renderChatImage(row,image,index,group){
 function messageRow(row){
   const group=selected,sent=row.kind==='sent',name=sent?(snapshot.status.name||'Bot'):(row.sender||'群友');let pictures=row.image_info||[];
   const item=node('div',undefined,'msg '+row.kind);item.title=eventSummary(row);
-  const body=node('div',undefined,'msg-body'),head=node('div',undefined,'msg-head');head.append(node('strong',name),node('span',eventTime(row)));
+  const body=node('div',undefined,'msg-body'),head=node('div',undefined,'msg-head');head.append(node('strong',name),node('span',eventTime(row)));if(row.blocked)head.append(node('span','屏蔽','member-block-badge'));
   const bubble=node('div',undefined,'bubble'),toggle=pictures.length?node('button',undefined,'chat-media-toggle'):null;
   const render=()=>{
     releaseChatImageLoads(bubble);bubble.replaceChildren();if(row.quote)bubble.append(node('span',quoteSummary(row),'bubble-quote'));
@@ -255,9 +259,9 @@ function settingRow(key){const cfg=configData.config,meta=configData.fields[key]
   const inheritOption=text=>{const option=node('option','使用全局（'+text+'）');option.value='inherit';return option;};
   if(type==='boolean'&&!local){const sw=node('label',undefined,'switch'),state=node('span',value?'开启':'关闭','switch-label');input=node('input');input.type='checkbox';input.checked=Boolean(value);input.setAttribute('role','switch');sw.append(input,node('span'));read=()=>input.checked?'on':'off';input.onchange=()=>{state.textContent=input.checked?'开启':'关闭';saveSetting(key,read(),ctx,input);};edit.append(state,sw);}
   else if(type==='boolean'||meta.options||['model','reasoning_effort'].includes(key)){input=node('select');if(type==='boolean'){if(local)input.append(inheritOption(configData.global_config[key]?'开启':'关闭'));for(const choice of ['on','off']){const option=node('option',choice==='on'?'开启':'关闭');option.value=choice;input.append(option);}input.value=inherited?'inherit':value?'on':'off';}else if(meta.options){if(local)input.append(inheritOption(meta.options[configData.global_config[key]]||configData.global_config[key]));for(const [choice,text] of Object.entries(meta.options)){const option=node('option',text);option.value=choice;input.append(option);}input.value=inherited?'inherit':value;}else{modelOptions(input,value,key);if(local){input.prepend(inheritOption(configData.global_config[key]));if(inherited)input.value='inherit';}}immediate(input);edit.append(input);}
-  else if(isObject){input=node('textarea');input.spellcheck=false;input.value=inherited?'':JSON.stringify(value,null,2);input.placeholder=JSON.stringify(configData.global_config[key],null,2);input.oninput=markDirty;edit.append(input,save);}
-  else if(type==='number'&&/probability|confidence|strength/.test(key)){const wrap=node('div',undefined,'slider'),range=node('input');range.type='range';range.min='0';range.max='1';range.step='0.01';input=node('input');input.type='number';input.min='0';input.max='1';input.step='any';input.value=inherited?'':value;input.placeholder=String(configData.global_config[key]);range.value=input.value===''?configData.global_config[key]:input.value;range.setAttribute('aria-label',meta.label);range.oninput=()=>{input.value=range.value;markDirty();};input.oninput=()=>{if(input.value!=='')range.value=input.value;markDirty();};wrap.append(range,input);edit.append(wrap,save);}
-  else{input=node('input');input.type=type==='number'?'number':'text';input.value=inherited?'':value;input.placeholder=String(configData.global_config[key]);if(type==='number'){input.min='0';input.step='any';}input.oninput=markDirty;edit.append(input,save);}
+  else if(isObject||key.startsWith('member_prompt_')||key==='member_model_block_rules'){input=node('textarea');input.spellcheck=false;input.value=inherited?'':isObject?JSON.stringify(value,null,2):value;input.placeholder=isObject?JSON.stringify(configData.global_config[key],null,2):String(configData.global_config[key]||'可留空');input.oninput=markDirty;edit.append(input,save);}
+  else if(type==='number'&&/probability|confidence|strength/.test(key)){const wrap=node('div',undefined,'slider'),range=node('input');range.type='range';range.min='0';range.max='1';range.step='0.01';input=node('input');input.type='number';input.min='0';input.max='1';input.step='any';input.value=inherited?'':value;input.placeholder=key==='webui_key'?'留空则启动时随机生成':String(configData.global_config[key]);range.value=input.value===''?configData.global_config[key]:input.value;range.setAttribute('aria-label',meta.label);range.oninput=()=>{input.value=range.value;markDirty();};input.oninput=()=>{if(input.value!=='')range.value=input.value;markDirty();};wrap.append(range,input);edit.append(wrap,save);}
+  else{input=node('input');input.type=key==='webui_key'?'password':type==='number'?'number':'text';input.value=inherited?'':value;input.placeholder=key==='webui_key'?'留空则启动时随机生成':String(configData.global_config[key]);if(type==='number'){input.min='0';input.step='any';}input.oninput=markDirty;edit.append(input,save);}
   if(Object.hasOwn(configDrafts,draftKey)&&input.type!=='checkbox'&&input.tagName!=='SELECT'){input.value=configDrafts[draftKey];edit.classList.add('dirty');const range=edit.querySelector('input[type=range]');if(range&&input.value!=='')range.value=input.value;}
   if(input.tagName==='INPUT'&&input.type!=='checkbox')input.onkeydown=event=>{if(event.key==='Enter'){event.preventDefault();save.click();}};
   input.disabled=locked;input.dataset.field=key;input.setAttribute('aria-label',meta.label);save.onclick=()=>saveSetting(key,read(),ctx,save);

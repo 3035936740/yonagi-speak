@@ -401,3 +401,5 @@ dialog::backdrop{background:#0d111a66}
   .data-table th:first-child,.data-table td:first-child{padding-left:16px}
   .sticker-grid{padding:12px 16px;grid-template-columns:repeat(auto-fill,minmax(150px,1fr))}
 }
+
+.member-block-badge{color:var(--bad,#ba3154);background:var(--hover);border:1px solid currentColor;border-radius:4px;padding:0 5px;font-size:11px}.member-block-control{display:flex;align-items:center;gap:8px;font-size:13px;line-height:1.6}.member-block-control input{flex:none;width:16px;height:16px}

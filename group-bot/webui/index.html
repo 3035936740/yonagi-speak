@@ -63,7 +63,7 @@
   <section id="tab-members" class="tab">
     <div class="page-bar"><input id="member-search" type="search" placeholder="搜索群友昵称、QQ号或标记" aria-label="搜索群友标记"><span class="spacer"></span><button id="member-refresh" type="button">刷新</button></div>
     <p class="page-note">标记只保存在当前群后台。手动标记优先；自动 bot 标记需要多次指令响应证据，不根据聊天文风猜测 AI 或真人。</p>
-    <form id="member-form" class="member-editor"><label>QQ号<input id="member-account" inputmode="numeric" pattern="[1-9][0-9]{4,14}" required aria-label="标记群友QQ号"></label><label>账号类型<select id="member-label"><option value="AI">AI</option><option value="bot">bot</option><option value="human">真人</option><option value="auto">恢复自动判断</option><option value="clear">清除标记和判断记录</option></select></label><label class="member-note">账号说明<input id="member-note" maxlength="200" placeholder="可选，按设置供模型参考"></label><button id="member-save" class="primary" type="submit">保存标记</button></form>
+    <form id="member-form" class="member-editor"><label>QQ号<input id="member-account" inputmode="numeric" pattern="[1-9][0-9]{4,14}" required aria-label="标记群友QQ号"></label><label>账号类型<select id="member-label"><option value="AI">AI</option><option value="bot">bot</option><option value="human">真人</option><option value="owner">bot主</option><option value="auto">恢复自动判断</option><option value="clear">清除标记和判断记录</option></select></label><label class="member-note">账号说明<input id="member-note" maxlength="200" placeholder="可选，按设置供模型参考"></label><button id="member-save" class="primary" type="submit">保存标记</button></form>
     <p id="member-count" class="page-note"></p><div id="member-records" class="data-table"></div>
   </section>
 
@@ -114,11 +114,12 @@
 <dialog id="member-dialog" class="intervention-dialog" aria-labelledby="member-dialog-title"><form id="member-dialog-form">
   <div class="dialog-head"><h2 id="member-dialog-title">群友资料与标记</h2><button id="member-dialog-close" type="button" class="icon-button" aria-label="关闭群友资料">×</button></div>
   <div id="member-dialog-person" class="member-person"></div>
-  <div class="store-field"><label for="member-dialog-label">账号类型</label><select id="member-dialog-label"><option value="auto">自动判断 / 未标记</option><option value="AI">AI</option><option value="bot">bot</option><option value="human">真人</option><option value="clear">清除标记和判断记录</option></select></div>
+  <div class="store-field"><label for="member-dialog-label">账号类型</label><select id="member-dialog-label"><option value="auto">自动判断 / 未标记</option><option value="AI">AI</option><option value="bot">bot</option><option value="human">真人</option><option value="owner">bot主</option><option value="clear">清除标记和判断记录</option></select></div>
   <div class="store-field"><label for="member-dialog-aliases">额外昵称</label><textarea id="member-dialog-aliases" rows="2" placeholder="昵称B, aaaa（逗号或换行分隔）" maxlength="500"></textarea></div>
   <div class="store-field"><label for="member-dialog-note">账号说明</label><input id="member-dialog-note" maxlength="200" placeholder="可选，按设置供模型参考"></div>
+  <div class="store-field"><label for="member-dialog-blocked">屏蔽（黑名单）</label><label class="member-block-control"><input id="member-dialog-blocked" type="checkbox"> 屏蔽此账号，后台仍可查看；模型不再读取或回复</label></div>
   <p id="member-dialog-evidence" class="page-note"></p><p class="page-note">仅对当前群生效；人工资料优先。三项资料默认可供模型参考；模型自行标记默认关闭，可在行为设置分别控制。资料不会作为消息直接发送到QQ群。</p>
-  <div class="dialog-foot"><span id="member-dialog-result" class="hint" role="status"></span><button id="member-dialog-save" class="primary" type="submit">保存标记和昵称</button></div>
+  <div class="dialog-foot"><span id="member-dialog-result" class="hint" role="status"></span><button id="member-dialog-save" class="primary" type="submit">保存群友资料</button></div>
 </form></dialog>
 <dialog id="intervention-dialog" class="intervention-dialog" aria-labelledby="intervention-title">
   <div class="dialog-head"><h2 id="intervention-title">系统干预</h2><button id="intervention-close" type="button" class="icon-button" aria-label="关闭">×</button></div>

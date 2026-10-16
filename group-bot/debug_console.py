@@ -26,7 +26,7 @@ from manual_outbox import ManualOutbox
 from debug_images import mutate as image_mutate
 from sticker_prefill import StickerPrefill, start as start_sticker_prefill
 
-COMMANDS=['status','config','groups','group','whitelist','search','view','delete','help','restart','webui','quit','exit','stop','system','say']
+COMMANDS=['status','config','groups','group','whitelist','search','view','delete','help','restart','webui','quit','exit','stop','system','say','member']
 
 
 def display_width(text):return sum(2 if unicodedata.east_asian_width(c) in 'WF' else 1 for c in text)
@@ -155,7 +155,7 @@ class Console:
         self.group=self.config.load()['group_id'];self.buffer='';self.finding=False;self.view='all'
         self.search='';self.scroll=0;self.notice='输入 /help 查看命令';self.running=True;self.rows={};self.names={}
         self.command_history=[];self.history_index=0
-        self._last_frame=None
+        self._last_frame=None;self.panel=None
         self.web_server=None;self.web_requests=queue.Queue()
     def open_webui(self):
         from debug_webui import DebugWebUI
@@ -196,7 +196,7 @@ class Console:
                     value.get('values'),value.get('row_id'),value.get('expected')),'selected':group}
             elif action=='member_label':
                 from member_labels import store
-                result=store(self.root,group).mark(str(value.get('account','')),str(value.get('label','')),value.get('note',''),value.get('aliases'))
+                result=store(self.root,group).mark(str(value.get('account','')),str(value.get('label','')),value.get('note',''),value.get('aliases'),value.get('blocked'))
                 return {'ok':True,'member':result,'selected':group,'message':'群友标记已保存，下次回复生效'}
             elif action=='sticker':
                 return {**sticker_mutate(self.root,str(value.get('mode','')),str(value.get('id','')),value.get('values')),'selected':group}
@@ -264,6 +264,8 @@ class Console:
                         seen.add(key)
                     rows.append(row)
             rows=recover_chat(rows,folder,Config(self.root,group).load(),hidden,group)
+            from member_policy import enrich_records
+            rows=enrich_records(rows,folder)
             rows+=Interventions(self.root,group).events()
             rows.sort(key=lambda row:row.get('time',0))
             self.rows[group]=rows
@@ -288,6 +290,7 @@ class Console:
                 if len(parts)>=3 and parts[1] in {'set','get'}:choices=list(self.config.load())+list(ALIASES)+['persona','reply_protocol']
             elif command=='whitelist':choices=['add','remove','show']
             elif command=='view':choices=['all','chat','flow','system']
+            elif command=='member':choices=['list','show','type','block','unblock']
             elif command=='system':choices=['add','list','remove','delete','clear','--scope','group','all','--mode','context','once','timed','persistent','--minutes']
             elif command=='group':choices=[str(group) for group in self.groups()]
             else:choices=[]
@@ -316,18 +319,20 @@ class Console:
             self.supervisor.paused.discard(self.group)
             self.supervisor.sync();self.notice='已重启当前群';return
         if command=='help':
-            self.notice='/webui 打开网页调试 /status /config show|get|set|edit|prompt /config name 新名字 /config rate 0.35 /whitelist add 群号 /group 群名或群号 /search 文本 /view all|chat|flow|system /say TEXT /system add|list|remove|delete|clear [--scope group|all] [--mode context|once|timed|persistent] [--minutes 30] 内容 /delete 消息ID /exit、/quit 或 /stop 退出';return
+            self.notice='/status 运行总览（Esc返回）\n/config 配置面板：↑↓选择、Enter编辑、Tab全局/当前群、输入搜索\n/config local 当前群配置面板\n/config set 字段 值  /config key=xxxx 自定义后台密钥\n/config show|get|edit|prompt  /config inherit 字段\n/member list|show|type|block|unblock 群友类型和屏蔽\n/webui 网页后台  /group 群名或群号  /groups 群列表\n/whitelist add|remove 群号  /search 文本  /view all|chat|flow|system\n/say 内容  /system add|list|remove|clear  /delete 消息ID\n/stop、/exit、/quit 保存并退出';return
+        if command=='member':
+            from console_panels import member_command
+            member_command(self,rest);return
         if command=='status':
-            cfg=self.config.load();folder=runtime(self.root,self.group,cfg);state=read_json(folder/'state.json')
-            cache=read_json(folder/'image-memory.json');rows=self.rows.get(self.group,[])
-            self.notice=f"{self.names.get(self.group)}({self.group}) | 在线={state.get('online',False)} PID={state.get('pid')} 最近轮询={state.get('last_poll')} | 调试记录={len(rows)} 对话文本={sum(text_chars(row) for row in rows if lane(row)=='chat')}/{cfg['console_max_text_chars']}字符 | 模型输入上限={cfg['max_prompt_chars']}字符 近期对话={cfg['recent_chat_journal_max_messages']}条/{cfg['recent_chat_journal_hours']}小时 | 今日模型调用={state.get('model_calls_today',0)} | 图片摘要={len(cache.get('entries',{}))} 已观察消息={cache.get('sequence',0)} | {cfg['model']} {cfg['reasoning_effort']} fast={cfg['fast_mode']} | 内存={state.get('memory_stats',{})}";return
+            from console_panels import status
+            self.notice=status(self);self.panel={'kind':'status'};return
         if command=='groups':self.notice=' | '.join(f'{self.names.get(g,g)} ({g})' for g in self.groups());return
         if command=='group':
             hits=self.matches(rest)
             if len(hits)!=1:raise ValueError('群匹配不唯一：'+str(hits))
             self.group=hits[0];self.scroll=0;return
         if command=='search':self.search=rest;self.scroll=0;self.notice='当前群记录筛选：'+rest;return
-        if command=='view':self.view=unique(rest,['all','chat','flow','system']);self.scroll=0;self.notice='视图：'+self.view;return
+        if command=='view':self.panel=None;self.view=unique(rest,['all','chat','flow','system']);self.scroll=0;self.notice='视图：'+self.view;return
         if command=='delete':
             if not any(str(row.get('message_id',''))==rest for row in self.rows.get(self.group,[])):
                 raise ValueError('当前群保留记录中没有该消息ID')
@@ -358,6 +363,13 @@ class Console:
         self.notice=('系统干预已保存，不触发立即回复。' if verb=='add' else '系统干预：')+json.dumps(result,ensure_ascii=False)
         self.refresh()
     def configure(self,rest):
+        if not rest.strip():
+            self.panel={'kind':'config','scope':'local' if self.config.group_id is not None else 'global','index':0,'query':'','message':''}
+            self.notice='配置面板：方向键选择，Enter编辑，Tab切换作用域';return
+        if '=' in rest.split(maxsplit=1)[0]:
+            name,value=rest.split('=',1)
+            self.config.set(name.strip(),value)
+            self.supervisor.sync();self.notice='已保存 '+name.strip()+'；WebUI key/地址/端口需重启后台生效';return
         words=rest.split(maxsplit=1);key=words[0] if words else 'show';value=words[1] if len(words)>1 else ''
         if key in {'local','global'}:
             original=self.config;self.config=Config(self.root,self.group if key=='local' else None)
@@ -370,12 +382,14 @@ class Console:
         if action=='inherit':self.config.reset(value);self.notice='已恢复继承全局设置';return
         if action=='show':
             cfg=self.config.load();values={k:v for k,v in cfg.items() if k not in PROTECTED and (not value or value in k)}
+            if 'webui_key' in values:values['webui_key']='已设置（隐藏）' if values['webui_key'] else '随机生成'
             self.notice=json.dumps(values,ensure_ascii=False,indent=2);return
         if action=='get':
             field=self.config.key(value)
             self.notice=self.config.prompt_path(field).read_text(encoding='utf-8') if field in {'persona','reply_protocol'} else str(self.config.load().get(field));return
         if action=='set':
             pair=value.split(maxsplit=1)
+            if len(pair)==1 and pair[0] in {'webui_key','key','member_prompt_human','member_prompt_owner','member_prompt_AI','member_prompt_bot'}:pair.append('')
             if len(pair)!=2:raise ValueError('/config set 字段 值')
             key,value=pair
         elif action=='edit':
@@ -413,6 +427,10 @@ class Console:
             for group in self.groups():self.supervisor.stop_group(group)
         self.supervisor.sync();self.notice='已保存，所有授权群共用；下一轮生效（已经开始的任务沿用原快照）'
     def key(self,char,code=None):
+        if char=='\x03':self.running=False;return
+        if self.panel:
+            from console_panels import key
+            key(self,char,code);return
         if code is not None:
             if code in {'K','M'} and not self.finding:self.switch(-1 if code=='K' else 1)
             elif code=='I':self.scroll+=12
@@ -441,6 +459,9 @@ class Console:
                 self.notice='错误：'+str(exc)
         elif char.isprintable():self.buffer+=char
     def screen(self,width=100,height=30):
+        if self.panel:
+            from console_panels import render
+            return render(self,width,height)
         cfg=self.config.load();state=read_json(runtime(self.root,self.group)/'state.json')
         header=f"QQ 调试台 | {self.names.get(self.group,self.group)} ({self.group}) | {'在线' if state.get('online') else '等待连接/已停止'} | {cfg['model']} {cfg['reasoning_effort']} fast={cfg['fast_mode']}"
         if self.group in self.supervisor.exited:header+=' | 后台退出码='+str(self.supervisor.exited[self.group])+'，用 /restart 重试'
@@ -455,6 +476,7 @@ class Console:
             if self.search.lower() not in (text+' '+str(row.get('message_id',''))).lower():continue
             prefix=time.strftime('%H:%M:%S',time.localtime(row.get('time',0)))+' '+labels.get(kind,kind)
             if row.get('historical'):prefix+=' [历史]'
+            if row.get('blocked'):prefix+=' [屏蔽]'
             if row.get('sender'):prefix+=' '+clean(row['sender'])
             if row.get('role'):prefix+=' '+row['role']
             if row.get('message_id'):prefix+=' #'+str(row['message_id'])

@@ -19,7 +19,7 @@ class InterventionTests(unittest.TestCase):
     def setUp(self):
         self.temp=tempfile.TemporaryDirectory();self.addCleanup(self.temp.cleanup)
         self.root=Path(self.temp.name);cfg=bot.settings()
-        cfg.update(group_id=100,chat_group_whitelist=[100,200],console_max_text_chars=6000)
+        cfg.update(group_id=100,chat_group_whitelist=[100,200],console_max_text_chars=6000,max_prompt_chars=6000)
         atomic(self.root/'settings.json',cfg)
         (self.root/'persona.txt').write_text('你是yonagi',encoding='utf-8')
         self.store=Interventions(self.root,100)

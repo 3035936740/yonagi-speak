@@ -143,6 +143,7 @@ class EmojiLibrary:
         self.aliases = self._read(self.aliases_path)
         self.hashes = self._read(self.hashes_path)
         self.classifier = classifier
+        self.allow_candidate=lambda data:True
         self.usage_by_key = {}
         self.review_min_count=5;self.review_step=3;self.upload_retry_seconds=300
         self._upload_origin=uuid.uuid4().hex
@@ -333,7 +334,7 @@ class EmojiLibrary:
                 self.prune()
                 self.save()
             elif kind == 'image' and str(data.get('sub_type')) == '1':
-                self.offer_candidate(data)
+                self.offer_candidate({**data,'_source_user_id':str(msg.get('user_id',''))})
 
     @serialized
     def mark_used(self, key):
@@ -449,6 +450,7 @@ class EmojiLibrary:
             reviewed=False
             local_upload=data.get('_upload_origin')==self._upload_origin
             try:
+                if not local_upload and not self.allow_candidate(data):continue
                 if data.get('_local_path'):
                     if not local_upload:continue
                     path=Path(data['_local_path']).resolve()
@@ -490,6 +492,7 @@ class EmojiLibrary:
                 # Neither a QQ sub_type nor an emotion label proves admission.
                 if self.classifier is None:
                     continue
+                if not local_upload and not self.allow_candidate(data):continue
                 with tempfile.TemporaryDirectory(prefix='check-', dir=self.root) as folder:
                     candidate = Path(folder) / ('candidate.' + extension)
                     candidate.write_bytes(raw)

@@ -15,13 +15,18 @@ from storage_io import atomic_write_text, read_text
 DEFAULTS = {'bot_name':'yonagi', 'bot_aliases':['Ethereal Paradise','EP'],'avatar_remote_enabled':False,
     'member_auto_bot_marking_enabled':True,'member_auto_bot_min_observations':10,
     'member_auto_bot_window_messages':200,'member_auto_bot_command_prefixes':['/','!','！','.','。','#','y'],
+    'member_model_block_enabled':False,'member_model_block_min_messages':3,
+    'member_model_block_rules':'案例：同一账号连续多次主动讨论中国政治相关内容时，可屏蔽该账号；单次提及、引用他人或无关同词不算。',
+    'member_prompt_owner':'你的主人说什么就得干什么',
+    'member_prompt_human':'','member_prompt_AI':'减少与AI的互动，并且明确与AI进行切割',
+    'member_prompt_bot':'bot不与AI进行任何互动',
     'member_reference_type_enabled':True,'member_reference_aliases_enabled':True,'member_reference_note_enabled':True,
     'member_model_type_enabled':False,'member_model_aliases_enabled':False,'member_model_note_enabled':False,
     'model_timeout_seconds':30,'vision_timeout_seconds':60,'image_timeout_seconds':150,
     'chat_image_display':'image',
-    'webui_host':'127.0.0.1','webui_port':0,
+    'webui_host':'127.0.0.1','webui_port':0,'webui_key':'',
     'max_reply_parts':6,'max_stickers_per_reply':3,
-    'console_max_records':6000, 'console_max_text_chars':6000, 'image_summary_window_messages':2000,
+    'max_prompt_chars':12800,'console_max_records':6000, 'console_max_text_chars':12800, 'image_summary_window_messages':2000,
     'image_repeat_window_messages':10, 'image_repeat_min_count':3,
     'image_repeat_pair_confidence':.5, 'image_repeat_full_streak':3, 'role_models':{},
     'proactive_topic_probability':.15, 'background_image_reading_enabled':True,
@@ -37,11 +42,11 @@ DEFAULTS = {'bot_name':'yonagi', 'bot_aliases':['Ethereal Paradise','EP'],'avata
     'generated_image_cleanup_daily_time':'03:00','generated_image_windows_schedule':'daily',
     'passive_trigger_mode':'frequency','passive_window_seconds':180,
     'passive_round_seconds':40,'passive_idle_compensation_enabled':True,'passive_retry_backoff_seconds':15}
-ALIASES = {'name':'bot_name','aliases':'bot_aliases','rate':'passive_probability',
+ALIASES = {'key':'webui_key','name':'bot_name','aliases':'bot_aliases','rate':'passive_probability',
     'effort':'reasoning_effort','fast':'fast_mode','records':'console_max_records',
     'whitelist':'chat_group_whitelist','prompt':'persona','protocol':'reply_protocol','text_limit':'console_max_text_chars'}
 PROTECTED = {'group_id','mcp_env_file','codex_exe'}
-GLOBAL_ONLY = PROTECTED | {'chat_group_whitelist','webui_host','webui_port'}
+GLOBAL_ONLY = PROTECTED | {'chat_group_whitelist','webui_host','webui_port','webui_key'}
 
 
 def pid_alive(pid):
@@ -158,6 +163,10 @@ class Config:
         if not 2<=cfg['member_auto_bot_min_observations']<=cfg['member_auto_bot_window_messages']//2:raise ValueError('同前缀响应阈值至少2次，不能超过消息窗口的一半')
         prefixes=cfg['member_auto_bot_command_prefixes']
         if not isinstance(prefixes,list) or not 1<=len(prefixes)<=32 or any(not isinstance(p,str) or not p.strip() or p!=p.strip() or len(p)>12 or any(c.isspace() for c in p) for p in prefixes):raise ValueError('指令前缀须为1～32个短文本，每个最多12字且不含空白')
+        if type(cfg['member_model_block_min_messages']) is not int or not 2<=cfg['member_model_block_min_messages']<=10:raise ValueError('自动屏蔽连续消息数量范围2～10')
+        if not isinstance(cfg['webui_key'],str) or len(cfg['webui_key'])>256 or any(ord(c)<33 or ord(c)>126 for c in cfg['webui_key']):raise ValueError('WebUI key须为空或最多256个可打印ASCII字符，不含空格')
+        for key in ('member_model_block_rules','member_prompt_owner','member_prompt_human','member_prompt_AI','member_prompt_bot'):
+            if not isinstance(cfg[key],str) or len(cfg[key])>1000:raise ValueError(key+' 最多1000字')
         for key in ('model_timeout_seconds','vision_timeout_seconds','image_timeout_seconds'):
             if not 1<=cfg[key]<=7200:raise ValueError(key+' 范围1～7200秒')
         if not 100<=cfg['console_max_records']<=100000:raise ValueError('控制台记录条数范围100~100000')

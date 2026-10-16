@@ -85,7 +85,7 @@ class StickerPrefill:
                     (self.folder/(row['id']+'.img')).unlink(missing_ok=True)
             atomic_write_text(self.folder.parent/'sticker-prefill-worker.json',json.dumps({'pid':pid,'version':1}))
 
-    def enqueue(self,raw,identity=None):
+    def enqueue(self,raw,identity=None,source_account=''):
         identity=identity or uuid.uuid4().hex;self.path(identity)
         if not raw or len(raw)>8*1024*1024:raise ValueError('图片上限8MB')
         with Image.open(io.BytesIO(raw)) as image:
@@ -103,6 +103,7 @@ class StickerPrefill:
                 raise ValueError('该群已有AI填入任务，请等待完成')
             write_bytes(self.folder/(identity+'.img'),raw)
             row={'id':identity,'group_id':self.group,'status':'queued','created':time.time(),'digest':digest}
+            if source_account:row['source_account']=source_account
             self.write(row);return row
 
     def cancel(self,identity):
@@ -125,6 +126,8 @@ class StickerPrefill:
         if not row:return
         identity=row['id'];source=self.folder/(identity+'.img')
         try:
+            from member_policy import blocked_accounts
+            if row.get('source_account') in blocked_accounts(self.folder.parent):raise ValueError('图片来源账号已屏蔽，跳过AI识别')
             if time.time()-row['created']>180:raise ValueError('AI填入排队已超时，请重新点击')
             if hashlib.sha256(source.read_bytes()).hexdigest()!=row['digest']:raise ValueError('待识别图片已发生变化')
             if not reserve():raise ValueError('模型调用额度不足或后台已停止')
@@ -173,7 +176,12 @@ def start(root,group,value):
     worker.path(identity)
     if worker.path(identity).is_file():return worker.get(identity)
     if not worker.ready():raise ValueError('AI填入需要已更新且在线的群后台，请 /exit 后手动重开Debug')
+    source_account=''
     if value.get('source')=='message':
+        from member_policy import blocked_accounts,message_account
+        excluded=blocked_accounts(worker.folder.parent)
+        source_account=message_account(worker.folder.parent,value.get('message_id',''))
+        if excluded and (not source_account or source_account in excluded):raise ValueError('图片来源账号已屏蔽或无法核验，不交给AI识别；仍可手动编辑')
         from debug_images import original
         raw=original(root,group,str(value.get('message_id','')),str(value.get('key',''))).read_bytes()
     elif value.get('source')=='upload':
@@ -183,4 +191,4 @@ def start(root,group,value):
         except ValueError:raise ValueError('无效图片编码')
         if len(raw)>2*1024*1024:raise ValueError('上传图片上限2MB')
     else:raise ValueError('请选择聊天图片或上传图片')
-    return worker.enqueue(raw,identity)
+    return worker.enqueue(raw,identity,source_account=source_account)

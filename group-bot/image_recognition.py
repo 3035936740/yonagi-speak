@@ -6,15 +6,16 @@ from image_sources import failure_details
 
 
 class ImageRecognition:
-    def __init__(self, memory, recognize, publish, can_start=lambda: True):
+    def __init__(self, memory, recognize, publish, can_start=lambda: True, allow_item=lambda item: True):
         self.memory, self.recognize, self.publish = memory, recognize, publish
         self.can_start = can_start
+        self.allow_item = allow_item
         self.queue = asyncio.Queue(maxsize=64)
         self.pending = {}
         self.lock = asyncio.Lock()
 
     def offer(self, item):
-        if not item.get('_images'):
+        if not self.allow_item(item) or not item.get('_images'):
             return
         known = [self.memory.lookup(key=item.get('_image_keys',{}).get(url) or source_key({'url':url}))
             for url in item['_images'][:2]]
@@ -49,8 +50,10 @@ class ImageRecognition:
             try:
                 while not self.can_start():
                     await asyncio.sleep(.5)
+                if not self.allow_item(item):continue
                 summaries = []
                 for url in item.get('_images', [])[:2]:
+                    if not self.allow_item(item):break
                     key = item.get('_image_keys', {}).get(url) or source_key({'url':url})
                     try:
                         summary = await self.read(url, key)
@@ -59,7 +62,7 @@ class ImageRecognition:
                     except Exception as error:
                         logging.getLogger('qq-group-bot').warning('Background image recognition unavailable; %s',
                             failure_details(error, url))
-                self.publish(item, summaries, 'read' if summaries else 'unavailable')
+                if self.allow_item(item):self.publish(item, summaries, 'read' if summaries else 'unavailable')
             finally:
                 self.queue.task_done()
 

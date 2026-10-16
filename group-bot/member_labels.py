@@ -10,7 +10,7 @@ from group_identity import qq_id
 from image_archive import locked
 from storage_io import atomic_write_text
 
-LABELS={'AI','bot','human'}
+LABELS={'AI','bot','human','owner'}
 COMMAND_PREFIXES=['/','!','！','.','。','#','y']
 
 
@@ -71,9 +71,10 @@ class MemberLabels:
         self.folder=Path(folder);self.path=self.folder/'member-labels.json'
     def read(self):return read_json(self.path,{'members':{}})
     def save(self,data):atomic_write_text(self.path,json.dumps(data,ensure_ascii=False,indent=2))
-    def mark(self,account,label,note='',aliases=None):
+    def mark(self,account,label,note='',aliases=None,blocked=None):
         account=qq_id(account)
-        if not account or label not in LABELS|{'auto','clear'}:raise ValueError('请选择有效QQ号及AI / bot / 真人 / 自动判断')
+        if not account or label not in LABELS|{'auto','clear'}:raise ValueError('请选择有效QQ号及AI / bot / 真人 / bot主 / 自动判断')
+        if blocked is not None and not isinstance(blocked,bool):raise ValueError('屏蔽必须为开/关')
         if not isinstance(note,str) or len(note)>200:raise ValueError('账号说明最多200字')
         if aliases is not None:
             if not isinstance(aliases,list) or len(aliases)>10 or any(not isinstance(name,str) or not name.strip() or len(name)>40 for name in aliases):
@@ -85,11 +86,17 @@ class MemberLabels:
                 previous=data['members'].pop(account,{})
                 kept=aliases if aliases is not None else self.effective(previous)['aliases']
                 row={'aliases':kept,'rule_after':time.time(),'updated_at':time.time()}
+                if 'manual_blocked' in previous:row['manual_blocked']=previous['manual_blocked']
+                if previous.get('model_blocked'):row['model_blocked']=True
+                if blocked is not None:row['manual_blocked']=blocked
                 if row:data['members'][account]=row
                 self.save(data);return self.effective(row)
             row=data['members'].setdefault(account,{})
             old=self.effective(row)
             row.update(manual_label='' if label=='auto' else label,updated_at=time.time())
+            if blocked is not None:
+                row['manual_blocked']=blocked
+                if not blocked:row.pop('model_blocked',None)
             if note!=old['note']:
                 row.update(note=note,manual_note_set=True);row.pop('model_note',None)
             if aliases is not None and aliases!=old['aliases']:
@@ -102,6 +109,8 @@ class MemberLabels:
         manual_note=bool(row.get('manual_note_set') or row.get('note'))
         manual_aliases=bool(row.get('manual_aliases_set') or row.get('aliases'))
         return {'label':manual or model or automatic or '', 'source':'manual' if manual else 'model' if model else 'auto' if automatic else 'unmarked',
+            'blocked':row.get('manual_blocked',row.get('model_blocked',False)),
+            'block_source':'manual' if 'manual_blocked' in row else 'model' if row.get('model_blocked') else 'unmarked',
             'manual_label':manual,'auto_label':automatic,'note':row.get('note','') if manual_note else row.get('model_note',''),
             'note_source':'manual' if manual_note else 'model' if row.get('model_note') else 'unmarked',
             'aliases':row.get('aliases',[]) if manual_aliases else row.get('model_aliases',[]),

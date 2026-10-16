@@ -26,7 +26,7 @@ ASSETS={'/':'index.html','/app.js':'app.js','/style.css':'style.css','/theme.js'
 class DebugWebUI:
     def __init__(self,root,dispatch):
         self.root=Path(root);self.config=Config(root);self.dispatch=dispatch
-        self.token=secrets.token_urlsafe(24);self.server=None;self.thread=None
+        self.token=self.config.load().get('webui_key') or secrets.token_urlsafe(24);self.server=None;self.thread=None
     def start(self):
         if self.server:return self.url
         owner=self;cfg=self.config.load();self.bind_host=cfg['webui_host'];address=ipaddress.ip_address(self.bind_host)
@@ -162,6 +162,8 @@ class DebugWebUI:
                     seen.add(key)
                 records.append(row)
         records=recover_chat(records,folder,cfg,hidden,selected)
+        from member_policy import enrich_records
+        records=enrich_records(records,folder)
         stored_text_chars=sum(text_chars(row) for row in records)
         chat_text_chars=sum(text_chars(row) for row in records if lane(row)=='chat')
         flow_text_chars=stored_text_chars-chat_text_chars
@@ -214,7 +216,7 @@ class DebugWebUI:
             'scope':scope,'group':group,'overrides':scoped.overrides(),
             'global_config':{key:value for key,value in self.config.load().items() if key not in PROTECTED|HIDDEN_FIELDS},
             'prompt_overrides':{name:(scoped.scope_root/(name+'.txt')).exists() if scope=='group' else True for name in ('persona','reply_protocol')},
-            'global_only':['chat_group_whitelist','webui_host','webui_port'],
+            'global_only':['chat_group_whitelist','webui_host','webui_port','webui_key'],
             'global_prompts':{name:(self.root/(name+'.txt')).read_text(encoding='utf-8') if (self.root/(name+'.txt')).exists() else '' for name in ('persona','reply_protocol')},
             'persona':scoped.prompt_path('persona').read_text(encoding='utf-8'),'models':models,
             'reply_protocol':scoped.prompt_path('reply_protocol').read_text(encoding='utf-8') if scoped.prompt_path('reply_protocol').exists() else '',

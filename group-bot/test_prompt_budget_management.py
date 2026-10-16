@@ -13,6 +13,12 @@ from prompt_budget import PromptBudgetError
 
 
 class PromptBudgetTests(unittest.TestCase):
+    def setUp(self):
+        # Continue testing the stricter legacy 6000 budget after defaults grow.
+        original=bot.settings
+        replacement=patch.object(bot,'settings',side_effect=lambda:{**original(),'max_prompt_chars':6000})
+        replacement.start();self.addCleanup(replacement.stop)
+
     def turn(self):
         now=time.time()
         own={'qq_id':'169901502','nickname':'Ethereal Paradise','card':''}
@@ -88,6 +94,15 @@ class PromptBudgetTests(unittest.TestCase):
         self.assertGreaterEqual(len(payload['reference_pages'][0]['body']),900)
         self.assertEqual(payload['group_identities']['sender']['account_label'],'AI')
         self.assertIn('aaaa',payload['group_identities']['sender']['extra_names'])
+
+    def test_owner_policy_fits_source_and_quote_without_removing_policy(self):
+        context,target=self.turn()
+        target['_identity_snapshot']['sender'].update(account_label='owner',label_source='manual')
+        target['_reference_pages']=[{'status':'read','title':'实际来源','body':'具体仓库事实。'*200}]
+        prompt=bot.build_prompt(bot.settings(),context,'被@',target)
+        self.assertLessEqual(len(prompt),6000)
+        self.assertIn('你的主人说什么就得干什么',prompt)
+        self.assertIn('无任务正常闲聊',prompt)
 
     def test_repair_hint_and_direct_reply_suffix_share_the_same_total_budget(self):
         async def run(folder):

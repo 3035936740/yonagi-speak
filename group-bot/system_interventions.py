@@ -129,7 +129,7 @@ def attach(cfg,root):
     cfg['_developer_instructions']=instructions
     cfg['_intervention_ids']=[row['id'] for row in rows]
     cfg['_intervention_chars']=len(instructions)
-    cfg['max_prompt_chars']=max(1,cfg.get('max_prompt_chars',6000)-len(instructions))
+    cfg['max_prompt_chars']=max(1,cfg.get('max_prompt_chars',12800)-len(instructions))
     return cfg
 
 

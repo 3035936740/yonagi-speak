@@ -14,7 +14,7 @@ from recent_chat_journal import RecentChatJournal
 class DebugWindowTests(unittest.TestCase):
     def setup_root(self,root):
         cfg=json.loads(Path(__file__).with_name('settings.example.json').read_text(encoding='utf-8'))
-        cfg.update(group_id=100,chat_group_whitelist=[100,200]);atomic(root/'settings.json',cfg)
+        cfg.update(group_id=100,chat_group_whitelist=[100,200],console_max_text_chars=6000);atomic(root/'settings.json',cfg)
         return Config(root).load()
 
     def test_log_flood_never_reduces_fifty_chat_messages_to_two(self):

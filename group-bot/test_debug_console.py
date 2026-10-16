@@ -35,7 +35,7 @@ class ConsoleTests(unittest.TestCase):
         self.ui.key('\r');self.assertEqual(self.ui.group,200)
         self.ui.execute('/group 100');self.assertEqual(self.ui.group,100)
     def test_command_prefixes_and_ambiguous_prefix_do_not_guess(self):
-        self.ui.execute('/sta');self.assertIn('6000字符',self.ui.notice)
+        self.ui.execute('/sta');self.assertIn('12800字符',self.ui.notice)
         self.ui.buffer='/sta';self.ui.complete();self.assertEqual(self.ui.buffer,'/status ')
         self.ui.buffer='/config set console_max_t';self.ui.complete()
         self.assertEqual(self.ui.buffer,'/config set console_max_text_chars ')
