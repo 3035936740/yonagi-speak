@@ -14,7 +14,7 @@ from console_config import Config, runtime, atomic
 from emoji_library import EmojiLibrary
 from sticker_filter import approved, EMOTIONS
 
-TABLES={'notes':'记忆 / 表达','people':'群友资料','sources':'学习来源',
+TABLES={'notes':'记忆 / 表达','people':'群友资料','sources':'学习来源','manual_messages':'yonagi手动消息',
     'note_metadata':'记忆置信与反馈','supersessions':'事实修订关系'}
 
 
@@ -84,7 +84,7 @@ def database_mutate(root,group,table,mode,values=None,row_id=None,expected=None)
         columns={row['name']:dict(row) for row in db.execute('PRAGMA table_info("'+table+'")')}
         values=validate_values(table,dict(values or {}),columns)
         if mode=='create' and table=='notes':values.setdefault('kind','fact')
-        required='content' if table=='notes' else 'name' if table=='people' else 'text' if table=='sources' else None
+        required='content' if table=='notes' else 'name' if table=='people' else 'text' if table in {'sources','manual_messages'} else None
         if required and (mode=='create' or required in values) and not str(values.get(required,'') or '').strip():raise ValueError('内容不能为空')
         db.execute('BEGIN IMMEDIATE')
         existing=None

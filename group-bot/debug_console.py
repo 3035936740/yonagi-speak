@@ -19,8 +19,10 @@ from debug_events import clean
 from debug_references import text_chars
 from debug_store import database_mutate, sticker_mutate
 from runtime_paths import prepare_runtime_paths
+from system_interventions import command as intervention_command,Interventions
+from manual_outbox import ManualOutbox
 
-COMMANDS=['status','config','groups','group','whitelist','search','view','delete','help','restart','webui','quit','exit']
+COMMANDS=['status','config','groups','group','whitelist','search','view','delete','help','restart','webui','quit','exit','system','say']
 
 
 def display_width(text):return sum(2 if unicodedata.east_asian_width(c) in 'WF' else 1 for c in text)
@@ -189,6 +191,16 @@ class Console:
                 return {**sticker_mutate(self.root,str(value.get('mode','')),str(value.get('id','')),value.get('values')),'selected':group}
             elif action=='config_inherit':
                 self.config.reset(str(value.get('key','')));self.notice='已恢复继承全局设置'
+            elif action=='system':
+                result=intervention_command(self.root,group,str(value.get('mode','add')),text=value.get('text',''),
+                    mode=value.get('lifetime','context'),scope=value.get('target_scope','group'),
+                    minutes=value.get('minutes',30),identity=value.get('id'))
+                self.notice='系统干预已保存，不触发立即回复' if value.get('mode','add')=='add' else '系统干预已更新'
+                return {'ok':True,'message':self.notice,'result':result,'selected':group}
+            elif action=='manual_send':
+                request=ManualOutbox(self.root,group).enqueue(value.get('text',''),value.get('request_id'))
+                self.notice='手动消息已排队，发送成功后加入上下文和手动消息记忆'
+                return {'ok':True,'message':self.notice,'request':request,'selected':group}
             elif action in {'persona','reply_protocol'}:
                 text=value.get('text')
                 if not isinstance(text,str):raise ValueError('提示词必须是文本')
@@ -233,6 +245,8 @@ class Console:
                         if key in seen:continue
                         seen.add(key)
                     rows.append(row)
+            rows+=Interventions(self.root,group).events()
+            rows.sort(key=lambda row:row.get('time',0))
             self.rows[group]=rows[-cfg['console_max_records']:]
     def switch(self,step):
         groups=self.groups();self.group=groups[(groups.index(self.group)+step)%len(groups)];self.scroll=0
@@ -254,7 +268,8 @@ class Console:
                 if len(scoped_parts)>=2 and scoped_parts[0] in {'set','get','inherit'}:choices=list(self.config.load())+list(ALIASES)+['persona','reply_protocol']
                 if len(parts)>=3 and parts[1] in {'set','get'}:choices=list(self.config.load())+list(ALIASES)+['persona','reply_protocol']
             elif command=='whitelist':choices=['add','remove','show']
-            elif command=='view':choices=['all','chat','flow']
+            elif command=='view':choices=['all','chat','flow','system']
+            elif command=='system':choices=['add','list','remove','delete','clear','--scope','group','all','--mode','context','once','timed','persistent','--minutes']
             elif command=='group':choices=[str(group) for group in self.groups()]
             else:choices=[]
         hits=sorted(set(choice for choice in choices if choice.lower().startswith(prefix.lower())))
@@ -272,12 +287,17 @@ class Console:
             if rest:raise ValueError('/exit 或 /quit 不需要参数')
             self.running=False;self.notice='正在保存记录并退出；所有授权群后台及 WebUI 将停止';return
         if command=='webui':self.open_webui();return
+        if command=='system':
+            self.system_command(rest);return
+        if command=='say':
+            request=ManualOutbox(self.root,self.group).enqueue(rest)
+            self.notice='已排队发送到当前群；请求ID：'+request['id'];return
         if command=='restart':
             self.notice='正在保存并重启当前群';self.draw();self.supervisor.stop_group(self.group)
             self.supervisor.paused.discard(self.group)
             self.supervisor.sync();self.notice='已重启当前群';return
         if command=='help':
-            self.notice='/webui 打开网页调试 /status /config show|get|set|edit|prompt /config name 新名字 /config rate 0.35 /whitelist add 群号 /group 群名或群号 /search 文本 /view all|chat|flow /delete 消息ID /exit 或 /quit 退出；←→切群 Ctrl+F搜群 Tab补全 PgUp/PgDn翻页 Esc清筛选';return
+            self.notice='/webui 打开网页调试 /status /config show|get|set|edit|prompt /config name 新名字 /config rate 0.35 /whitelist add 群号 /group 群名或群号 /search 文本 /view all|chat|flow|system /say TEXT /system add|list|remove|delete|clear [--scope group|all] [--mode context|once|timed|persistent] [--minutes 30] 内容 /delete 消息ID /exit 或 /quit 退出';return
         if command=='status':
             cfg=self.config.load();folder=runtime(self.root,self.group,cfg);state=read_json(folder/'state.json')
             cache=read_json(folder/'image-memory.json');rows=self.rows.get(self.group,[])
@@ -288,7 +308,7 @@ class Console:
             if len(hits)!=1:raise ValueError('群匹配不唯一：'+str(hits))
             self.group=hits[0];self.scroll=0;return
         if command=='search':self.search=rest;self.scroll=0;self.notice='当前群记录筛选：'+rest;return
-        if command=='view':self.view=unique(rest,['all','chat','flow']);self.scroll=0;self.notice='视图：'+self.view;return
+        if command=='view':self.view=unique(rest,['all','chat','flow','system']);self.scroll=0;self.notice='视图：'+self.view;return
         if command=='delete':
             if not any(str(row.get('message_id',''))==rest for row in self.rows.get(self.group,[])):
                 raise ValueError('当前群保留记录中没有该消息ID')
@@ -306,6 +326,18 @@ class Console:
             else:cfg['chat_group_whitelist']=[value for value in groups if value!=group]
             self.config.save(cfg);self.supervisor.sync();self.notice='白名单已更新，对应群后台已同步';return
         if command=='config':self.configure(rest)
+    def system_command(self,rest):
+        words=rest.split();verb='list' if not words else 'add'
+        if words and any(value.startswith(words[0]) for value in ['add','list','remove','delete','clear']):
+            verb=unique(words.pop(0),['add','list','remove','delete','clear'])
+        options={'scope':'group','mode':'context','minutes':30}
+        while words and words[0].startswith('--'):
+            name=words.pop(0)[2:]
+            if name not in options or not words:raise ValueError('参数格式：--scope group|all --mode context|once|timed|persistent --minutes 30')
+            options[name]=float(words.pop(0)) if name=='minutes' else words.pop(0)
+        result=intervention_command(self.root,self.group,verb,text=' '.join(words),identity=words[0] if words and verb in {'remove','delete'} else None,**options)
+        self.notice=('系统干预已保存，不触发立即回复。' if verb=='add' else '系统干预：')+json.dumps(result,ensure_ascii=False)
+        self.refresh()
     def configure(self,rest):
         words=rest.split(maxsplit=1);key=words[0] if words else 'show';value=words[1] if len(words)>1 else ''
         if key in {'local','global'}:
@@ -395,7 +427,8 @@ class Console:
         for row in self.rows.get(self.group,[]):
             kind=row.get('kind','stage')
             if self.view=='chat' and kind not in {'sent','received'}:continue
-            if self.view=='flow' and kind in {'sent','received'}:continue
+            if self.view=='flow' and kind in {'sent','received','system'}:continue
+            if self.view=='system' and kind!='system':continue
             text=clean(row.get('text',''))
             if self.search.lower() not in (text+' '+str(row.get('message_id',''))).lower():continue
             prefix=time.strftime('%H:%M:%S',time.localtime(row.get('time',0)))+' '+labels.get(kind,kind)

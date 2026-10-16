@@ -32,6 +32,8 @@ from image_jobs import create_image
 from generated_image_store import maintain_images
 from dialogue import audience, direct_candidates, reply_lane, passive_candidate, fresh_reply, quote_needed, personal_claim, call_only, coalesce_calls, superseded_call
 from transport import text_transport_args
+from system_interventions import attach as attach_interventions
+from manual_outbox import ManualOutbox
 from runtime_paths import project_path,resolve_codex_executable
 from emoji_library import EmojiLibrary, ReplyText, selected_media
 from message_delivery import delivery_plan, deliver_burst, attach_market_fallbacks, DeliveryAborted
@@ -94,7 +96,7 @@ def settings():
     if (RUNTIME / 'NO_COOLDOWN').exists():
         for key in ('mention_cooldown_seconds', 'image_cooldown_seconds', 'passive_cooldown_seconds'):
             cfg[key] = 0
-    return cfg
+    return attach_interventions(cfg,ROOT)
 
 
 def checkpoint_messages(path, entries):
@@ -375,6 +377,7 @@ def wants_image(target):
 
 
 async def generate_for_message(client, cfg, context, trigger, target, as_image=False):
+    target['_system_intervention_ids']=list(cfg.get('_intervention_ids',[]))
     target['_peer_reply_enabled']=cfg.get('peer_reply_enabled',True)
     target['_peer_scene']=peer_reply.scene(target,context) if target['_peer_reply_enabled'] else {}
     target.setdefault('_delivery_preferences', {
@@ -1145,6 +1148,7 @@ async def generate_reply_json(cfg, prompt, target, images=None):
 
 
 async def generate(cfg, context, trigger, target, images=None):
+    target['_system_intervention_ids']=list(cfg.get('_intervention_ids',[]))
     target['_peer_reply_enabled']=cfg.get('peer_reply_enabled',True)
     target['_peer_scene']=peer_reply.scene(target,context) if target['_peer_reply_enabled'] else {}
     target.setdefault('_social_act',social_act(target.get('text','')))
@@ -1350,6 +1354,10 @@ async def generate_json(cfg, prompt, schema, images=None):
         '--color', 'never', '--json', '--output-schema', str(schema),
         '-o', str(output), '-']
     command[2:2] = text_transport_args(cfg)
+    if cfg.get('_developer_instructions') and Path(schema).name!='learning.schema.json':
+        command[2:2]=['-c','developer_instructions='+json.dumps(cfg['_developer_instructions'],ensure_ascii=False)]
+        log.info('System intervention attached; role=developer; entries=%s; chars=%s',
+            len(cfg.get('_intervention_ids',[])),cfg.get('_intervention_chars',0))
     for path in images or []:
         command[-1:-1] = ['--image', str(path)]
     log.info('Model attached images=%s; model=%s; effort=%s; tier=%s', len(images or []),
@@ -1656,6 +1664,20 @@ async def _run(smoke=False):
         emojis.classifier = classify_sticker
         emoji_worker = asyncio.create_task(emojis.collector(client))
         log.info('Started; group=%s; self=%s; recent unseen mentions preserved', cfg['group_id'], self_id)
+        manual_outbox=ManualOutbox(ROOT,cfg['group_id'])
+        manual_outbox.mark_ready(os.getpid())
+        def record_manual(request):
+            item={'sender':cfg['bot_name'],'text':request['text'],'is_bot':True,'_manual':True,
+                '_manual_request_id':request['id'],'_uid':str(self_id),'_id':request['message_id'],
+                '_time':request['sent_at'],'_audience':'direct','_group_id':cfg['group_id']}
+            memory.record_manual(item,request['id'])
+            first=journal.append(item)
+            if not any(str(row.get('_id'))==item['_id'] for row in history):history.append(item)
+            remember(item['_id']);checkpoint_seen()
+            if first:
+                reply_times.append(request['sent_at']);own_replies.append(request['text'])
+                debug_events.emit('sent',text=request['text'],sender=cfg['bot_name'],message_id=item['_id'],
+                    user_id=str(self_id),manual=True,request_id=request['id'],time=request['sent_at'],origin='manual')
         while not (RUNTIME / 'STOP').exists():
             cfg = settings()
             if identity_job.done() and time.time()-identities.last_refresh>=600:
@@ -1683,6 +1705,7 @@ async def _run(smoke=False):
                 day, daily_calls = current_day, 0
             poll_succeeded = False
             try:
+                await manual_outbox.drain(api,client,env,record_manual,cfg)
                 result = await api(client, env, 'get_group_msg_history', {'group_id': cfg['group_id'], 'count': 40})
                 poll_succeeded = True
                 incoming = []
@@ -1991,6 +2014,7 @@ async def _run(smoke=False):
                             part_text = ''.join(s.get('data', {}).get('text', '') for s in message if s['type'] == 'text')
                             native_quote_id=next((str(s.get('data',{}).get('id')) for s in message if s['type']=='reply'),None)
                             debug_events.emit('sent', sender=cfg['bot_name'], text=part_text or '[已发送图片或表情]',
+                                intervention_ids=target.get('_system_intervention_ids',[]),
                                 message_id=str(sent.get('message_id') or ''), action=part['action'],
                                 context_id=str(target.get('_id','')),request_id=str(target.get('_id','')),
                                 **debug_message_metadata({'_uid':str(self_id),'_reply_id':native_quote_id,

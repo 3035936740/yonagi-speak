@@ -11,7 +11,7 @@ import ctypes
 from configure_launch import validate as validate_model
 from storage_io import atomic_write_text, read_text
 
-DEFAULTS = {'bot_name':'yonagi', 'bot_aliases':['Ethereal Paradise','EP'],
+DEFAULTS = {'bot_name':'yonagi', 'bot_aliases':['Ethereal Paradise','EP'],'avatar_remote_enabled':False,
     'console_max_records':6000, 'console_max_text_chars':6000, 'image_summary_window_messages':2000,
     'image_repeat_window_messages':10, 'image_repeat_min_count':3,
     'image_repeat_pair_confidence':.5, 'image_repeat_full_streak':3, 'role_models':{},
@@ -91,7 +91,7 @@ class Config:
     def prompt_path(self, name):
         if name not in {'persona','reply_protocol'}:raise ValueError('未知提示词')
         local=self.scope_root/(name+'.txt')
-        return local if local.exists() else self.root/(name+'.txt')
+        return local if local.exists() else global_prompt_path(self.root,name)
     def reset(self,key):
         if self.group_id is None:raise ValueError('全局设置没有上层可继承')
         key=self.key(key);self.scope_root.mkdir(parents=True,exist_ok=True)
@@ -218,10 +218,30 @@ class Config:
         cfg[key]=value;self.save(cfg,explicit_keys=[key])
 
 
+def global_prompt_path(root,name):
+    """Initialize an absent local persona from the versioned Yonagi default.
+
+    Exclusive creation preserves a custom prompt even if another process
+    creates it during initialization. Existing files, including empty ones,
+    are never overwritten by a template.
+    """
+    if name not in {'persona','reply_protocol'}:raise ValueError('未知提示词')
+    root=Path(root);path=root/(name+'.txt')
+    if name=='persona' and not path.exists():
+        template=root/'persona-default.txt'
+        if template.is_file():
+            content=template.read_bytes()
+            if not content.strip():raise ValueError('默认yonagi人设不能为空：'+str(template))
+            try:
+                with path.open('xb') as stream:stream.write(content)
+            except FileExistsError:pass
+    return path
+
+
 def prompt_path(root,cfg,name):
     group=cfg.get('group_id')
     local=Path(root)/'group-config'/str(group)/(name+'.txt')
-    return local if group and local.exists() else Path(root)/(name+'.txt')
+    return local if group and local.exists() else global_prompt_path(root,name)
 
 
 def deleted_ids(path):return set(read_json(Path(path)/'deleted-messages.json',[]))
@@ -258,6 +278,8 @@ def delete_local(root,group,message_id):
     database=folder/'group-memory.sqlite3'
     if database.exists():
         with sqlite3.connect(database) as db:
+            if db.execute("SELECT 1 FROM sqlite_master WHERE name='manual_messages'").fetchone():
+                db.execute('DELETE FROM manual_messages WHERE id=?',(message_id,))
             salt=db.execute("SELECT value FROM meta WHERE key='salt'").fetchone()
             if salt:
                 digest=hashlib.sha256((salt[0]+message_id).encode()).hexdigest()[:20]

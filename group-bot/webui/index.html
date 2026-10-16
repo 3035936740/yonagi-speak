@@ -1,25 +1,127 @@
 <!doctype html>
 <html lang="zh-CN">
-<head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>QQ Bot Debugger</title><script src="/theme.js"></script><link rel="stylesheet" href="/style.css"><script type="module" src="/app.js"></script></head>
+<head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>群聊 Bot 控制台</title><script src="/theme.js"></script><link rel="stylesheet" href="/style.css"><script type="module" src="/app.js"></script></head>
 <body>
-<header class="titlebar"><div class="brand"><span class="app-icon" aria-hidden="true">&gt;_</span><strong>QQ Bot Debugger</strong><span class="workspace">Local workspace</span></div><nav class="workspace-nav" aria-label="工作区导航"><button data-view="logs" class="active">群聊会话</button><button data-view="system">全局状态</button><button data-view="settings">配置</button><button data-view="persona">提示词</button><button data-view="database">数据库</button><button data-view="stickers">表情库</button></nav><div class="local-connection"><span id="connection-dot" class="dot"></span><span id="connection">连接调试服务…</span><button id="theme-toggle" class="theme-toggle" aria-label="切换白天黑夜模式" aria-pressed="false" title="切换为黑夜模式">黑夜</button></div></header>
-<div class="systembar" aria-label="运行概览"><div><span id="qq-dot" class="dot"></span><span class="system-label">QQ</span><span id="system-onebot">等待状态</span></div><div><span class="system-label">模型</span><span id="system-model" class="mono">—</span></div><div><span class="system-label">模式</span><span id="system-mode">—</span></div><div><span class="system-label">后台</span><span id="system-runtime">—</span></div><div class="poll-state"><span class="system-label">最后轮询</span><span id="poll-age" class="mono">—</span></div></div>
-<div class="layout">
-<aside class="explorer"><div class="panel-title">群组 / 会话<span id="group-count" class="badge">0</span></div><div class="group-search"><input id="group-search" placeholder="搜索群名或群号" aria-label="搜索群名或群号" autocomplete="off"><kbd>Ctrl F</kbd></div><div id="groups" role="list" aria-label="授权群组"></div><div class="white-controls"><label for="white-id">授权群组</label><div><input id="white-id" inputmode="numeric" placeholder="输入群号"><button id="white-add" title="加入白名单" aria-label="加入白名单">+</button></div></div><div class="side-note"><span>本地工作区</span><span>← → 切换群组</span><span>CLI 与 WebUI 共用后台</span></div></aside>
-<main>
-<div class="sessionbar"><div class="session-heading"><div class="session-title"><h1 id="group-title">等待选择群组</h1><span id="group-subtitle" class="mono"></span></div><div id="session-detail">实际收发 · 触发判断 · 执行阶段</div></div><div id="group-actions" class="group-actions"><button id="pause">暂停</button><button id="restart">重启群后台</button><button id="white-remove" class="quiet danger" title="移出白名单">移出</button></div></div>
-<nav data-context-tabs aria-label="当前群调试面板"><button data-tab="logs" class="active">对话流程 <span id="trace-count" class="badge">0</span></button><button data-tab="settings">配置</button><button data-tab="persona">提示词</button><button data-tab="status">状态</button></nav>
-<section id="tab-logs" class="tab active">
-<div class="filter-bar"><div class="segmented"><button data-kind="all" class="active">全部事件</button><button data-kind="chat">对话</button><button data-kind="flow">执行流程</button></div><div class="record-search"><input id="record-search" placeholder="搜索内容、群友或 ID" aria-label="搜索事件"><button id="clear-search" title="清空事件搜索" aria-label="清空事件搜索">×</button></div><select id="level-filter" aria-label="筛选日志级别"><option value="all">所有级别</option><option value="WARNING">警告及错误</option><option value="ERROR">仅错误</option></select><label class="follow"><input type="checkbox" id="follow" checked>跟随</label></div>
-<div class="trace-layout"><div class="event-table"><div class="table-head"><span>时间</span><span>事件 / 角色</span><span>上下文 / 消息 ID</span><span>消息与执行摘要</span></div><div id="records" class="records" role="listbox" aria-label="调试事件"><div class="empty">等待读取本地记录</div></div><div class="record-footer"><span id="record-count">—</span><span>本地记录队列</span></div></div>
-<aside class="inspector"><div class="panel-title">事件详情<span id="detail-type" class="badge">—</span></div><div id="detail-empty" class="empty">选择一条事件<br>查看消息与结构化数据</div><div id="detail" hidden><dl id="detail-properties"></dl><div class="detail-section"><h2>消息内容</h2><div id="detail-content"></div></div><div id="detail-quote" class="detail-section quote-preview" hidden></div><div id="detail-images" class="detail-section" hidden></div><details class="raw-event" open><summary>结构化事件</summary><pre id="detail-json"></pre></details><div class="detail-actions"><button id="copy-id">复制 ID</button><button id="delete-event" class="danger">删除本地消息</button></div><p class="detail-note">删除本地记录与 bot 上下文，不撤回 QQ 消息</p></div></aside></div>
-</section>
-<section id="tab-settings" class="tab"><div class="panel-heading"><div><h2>运行配置</h2><p>保存到本机 settings.json · 重启保留 · 修改前备份 · 悬停参数查看说明</p></div><input id="config-search" placeholder="查找参数 / 概率 / 模型" aria-label="查找配置"></div><div class="quick-controls"><span>作用域</span><select id="config-scope" aria-label="配置作用域"><option value="global">全局默认</option><option value="group">当前群覆盖</option></select><span>冷却模式</span><button id="cooldown">读取中…</button><span class="muted"><span id="scope-description">全局默认 · 未覆盖的群继承</span></span></div><div class="property-head"><span>参数</span><span>值</span></div><div id="settings" class="settings"></div></section>
-<section id="tab-persona" class="tab"><div class="panel-heading"><div><h2>提示词 <span class="file-tag">分层编辑</span></h2><p>保存到本机文件并备份，下一轮回复生效</p></div><select id="prompt-scope" aria-label="提示词作用域"><option value="global">全局默认</option><option value="group">当前群覆盖</option></select><button id="inherit-prompt" hidden>恢复继承</button><select id="prompt-kind" aria-label="提示词类型"><option value="persona">人格设定 · persona.txt</option><option value="reply_protocol">回复系统规则 · reply_protocol.txt</option></select><button id="save-persona" class="primary">保存提示词</button></div><div class="persona-editor"><pre id="editor-gutter" class="editor-gutter" aria-hidden="true">1</pre><textarea id="persona" spellcheck="false" aria-label="完整提示词" placeholder="加载中…"></textarea></div><div class="editor-status"><span id="persona-state">等待加载</span><span>Plain Text · UTF-8</span></div></section>
-<section id="tab-status" class="tab"><div class="panel-heading"><div><h2>运行状态</h2><p>当前群的连接、记录容量与模型调用 · 每 1.5 秒刷新</p></div><span class="live-label"><span class="dot live"></span>Live</span></div><div id="status" class="status-grid"></div></section>
-<section id="tab-system" class="tab"><div class="panel-heading"><div><h2>全局运行状态</h2><p id="system-summary">汇总所有授权群的实际运行配置与连接</p></div><button id="system-refresh">刷新</button></div><div id="global-status" class="global-status"></div></section>
-<section id="tab-database" class="tab"><div class="panel-heading"><div><h2>群聊记忆数据库</h2><p>当前群 · 修改前备份 · 与后台共用本地 SQLite</p></div><select id="db-table" aria-label="选择数据表"></select><input id="db-search" placeholder="搜索内容 / 群友 / ID" aria-label="搜索数据库"><button id="db-refresh">刷新</button><button id="db-add" class="primary">新增记录</button></div><div id="db-records" class="store-table"></div><div class="store-footer"><span id="db-count"></span><button id="db-prev">上一页</button><button id="db-next">下一页</button></div></section>
-<section id="tab-stickers" class="tab"><div class="panel-heading"><div><h2>共享表情库</h2><p>授权群跨群复用 · 图片审核通过才发送 · QQ 商城名称可补写</p></div><input id="sticker-search" placeholder="搜索名称 / 情绪 / 哈希" aria-label="搜索表情库"><button id="sticker-refresh">刷新</button><button id="sticker-add" class="primary">收录图片</button></div><div id="sticker-records" class="sticker-grid"></div><div class="store-footer"><span id="sticker-count"></span><button id="sticker-prev">上一页</button><button id="sticker-next">下一页</button></div></section>
-<div class="command-area"><div class="command-head"><span>命令控制台 <small>COMMAND LINE</small></span><button id="toggle-output" class="quiet" aria-expanded="true">收起输出</button></div><form id="command-form"><span class="prompt">qq&gt;</span><input id="command" placeholder="/help · /status · /config · /whitelist    Tab 补全" aria-label="CLI 命令" autocomplete="off" spellcheck="false"><button type="submit">执行 ↵</button></form><pre id="command-output" aria-live="polite"></pre></div>
-</main></div><footer><span id="toast" role="status">就绪</span><span><span id="footer-model" class="mono">—</span><span class="footer-divider">|</span>本机调试</span></footer>
-<dialog id="store-editor"><form id="store-form"><div class="editor-dialog-head"><h2 id="store-title"></h2><button id="store-close" type="button" aria-label="关闭编辑">×</button></div><div id="store-fields"></div><div class="editor-dialog-footer"><span id="store-note"></span><button id="store-save" type="submit" class="primary">保存</button></div></form></dialog><div id="config-tooltip" role="tooltip" hidden></div></body></html>
+<div class="app">
+<aside class="sidebar">
+  <div class="brand"><span class="brand-mark" aria-hidden="true"></span><div><strong>Bot 控制台</strong><div class="connection"><span id="connection-dot" class="dot"></span><span id="connection">正在连接…</span></div></div></div>
+  <div class="side-heading"><span>群聊</span><span id="group-count" class="count">0</span></div>
+  <input id="group-search" type="search" class="side-search" placeholder="搜索群名或群号" aria-label="搜索群名或群号" autocomplete="off">
+  <div id="groups" class="group-list" role="list" aria-label="授权群组"></div>
+  <form id="white-form" class="add-group"><input id="white-id" inputmode="numeric" placeholder="输入群号添加" aria-label="要加入白名单的群号"><button id="white-add" type="submit">添加</button></form>
+  <nav class="side-nav" aria-label="全局页面"><button data-view="system" type="button"><span class="nav-icon overview" aria-hidden="true"></span>所有群总览</button><button data-view="stickers" type="button"><span class="nav-icon sticker" aria-hidden="true"></span>共享表情库</button><button id="open-console" type="button"><span class="nav-icon console" aria-hidden="true"></span>命令行</button></nav>
+  <div class="side-foot"><button id="theme-toggle" type="button" class="link-button" aria-pressed="false">深色模式</button><span id="footer-model" title="当前群的回复模型"></span></div>
+</aside>
+<main class="main">
+  <header class="group-header">
+    <div class="group-heading"><h1 id="group-title">正在读取群列表…</h1><div class="group-meta"><span id="group-status" class="status-pill">—</span><span id="group-subtitle"></span><span id="session-detail"></span></div></div>
+    <div id="group-actions" class="group-actions"><button id="pause" type="button">暂停</button><button id="restart" type="button">重启</button><button id="white-remove" type="button" class="danger-text">移出白名单</button></div>
+  </header>
+  <nav id="group-tabs" class="tabs" data-context-tabs aria-label="当前群页面"><button data-tab="logs" class="active" type="button">聊天记录<span id="trace-count" class="count">0</span></button><button data-tab="status" type="button">运行状态</button><button data-tab="settings" type="button">行为设置</button><button data-tab="persona" type="button">人设与规则</button><button data-tab="database" type="button">群记忆</button></nav>
+
+  <section id="tab-logs" class="tab active">
+    <div class="toolbar">
+      <div class="segmented" role="group" aria-label="显示内容"><button data-kind="all" class="active" type="button">全部</button><button data-kind="chat" type="button">只看聊天</button><button data-kind="flow" type="button">只看执行过程</button><button data-kind="system" type="button">只看系统提示词</button></div>
+      <div class="search-field"><input id="record-search" type="search" placeholder="搜索消息、群友或消息 ID" aria-label="搜索记录"><button id="clear-search" type="button" class="clear" aria-label="清空搜索">×</button></div>
+      <select id="level-filter" aria-label="按问题筛选"><option value="all">所有记录</option><option value="WARNING">只看警告和错误</option><option value="ERROR">只看错误</option></select>
+      <label class="check"><input type="checkbox" id="follow" checked>自动滚到最新</label>
+      <button id="open-intervention" type="button">系统干预<span id="intervention-count" class="count">0</span></button>
+    </div>
+    <div class="chat-layout">
+      <div class="chat-column">
+        <div id="records" class="chat" role="listbox" aria-label="聊天与执行记录"><div class="empty">正在读取记录…</div></div>
+        <form id="composer" class="composer" aria-label="发送系统提示词或yonagi消息">
+          <div class="composer-options">
+            <label>发送类型<select id="composer-role"><option value="system">系统提示词</option><option value="bot">yonagi 消息（发到群）</option></select></label>
+            <label data-system-option>范围<select id="composer-scope"><option value="group">当前群</option><option value="all">所有授权群</option></select></label>
+            <label data-system-option>有效期<select id="composer-lifetime"><option value="context">当前对话窗口</option><option value="once">下一次自然回复</option><option value="timed">定时失效</option><option value="persistent">手动清除</option></select></label>
+            <label id="composer-minutes-row" hidden>分钟<input id="composer-minutes" type="number" min="1" max="10080" value="30"></label>
+          </div>
+          <textarea id="composer-text" rows="2" maxlength="1500" placeholder="输入系统提示词，不会立即触发回复" aria-label="发送内容"></textarea>
+          <div class="composer-bottom"><span id="composer-hint" class="hint">系统指令仅供后续回复使用；Ctrl+Enter 提交</span><button id="composer-send" type="submit" class="primary" disabled>提交系统提示词</button></div>
+          <div id="composer-result" class="composer-result" role="status" aria-live="polite"></div>
+        </form>
+        <div id="record-count" class="chat-footer"></div>
+      </div>
+      <aside id="inspector" class="inspector" aria-label="记录详情">
+        <div id="detail-empty" class="empty">点一条消息，在这里查看完整内容、引用和图片信息</div>
+        <div id="detail" hidden>
+          <div class="detail-head"><span id="detail-type" class="kind-chip">—</span><button id="detail-close" type="button" class="icon-button" aria-label="关闭详情">×</button></div>
+          <div id="detail-content" class="detail-text"></div>
+          <div id="detail-quote" class="detail-block quote-preview" hidden></div>
+          <div id="detail-images" class="detail-block" hidden></div>
+          <dl id="detail-properties" class="detail-props"></dl>
+          <details class="raw-event"><summary>原始数据</summary><pre id="detail-json"></pre></details>
+          <div class="detail-actions"><button id="copy-id" type="button">复制 ID</button><button id="delete-event" type="button" class="danger-text">删除这条本地记录</button></div>
+          <p class="hint">删除只清掉本地记录和 Bot 的上下文，不会撤回 QQ 里的消息。</p>
+        </div>
+      </aside>
+    </div>
+  </section>
+
+  <section id="tab-status" class="tab"><div class="page"><div id="status" class="status-page"></div></div></section>
+
+  <section id="tab-settings" class="tab">
+    <div class="page-bar">
+      <div class="scope-switch" role="group" aria-label="设置范围"><button data-scope="global" class="active" type="button">全局默认</button><button data-scope="group" type="button">只改这个群</button></div>
+      <p id="scope-description" class="scope-note">所有没有单独设置的群都使用这里的值</p>
+      <input id="config-search" type="search" placeholder="查找设置" aria-label="查找设置">
+    </div>
+    <div class="settings-layout">
+      <nav id="settings-index" class="settings-index" aria-label="设置分类"></nav>
+      <div id="settings" class="settings"></div>
+    </div>
+  </section>
+
+  <section id="tab-persona" class="tab">
+    <div class="page-bar">
+      <div class="scope-switch" role="group" aria-label="提示词范围"><button data-scope="global" class="active" type="button">全局默认</button><button data-scope="group" type="button">只改这个群</button></div>
+      <div class="segmented" role="group" aria-label="提示词类型"><button data-prompt="persona" class="active" type="button">人设</button><button data-prompt="reply_protocol" type="button">回复规则</button></div>
+      <span class="spacer"></span>
+      <button id="inherit-prompt" type="button" hidden>改回使用全局</button>
+      <button id="save-persona" type="button" class="primary">保存</button>
+    </div>
+    <div class="prompt-page">
+      <p id="prompt-description" class="prompt-description"></p>
+      <textarea id="persona" spellcheck="false" aria-label="提示词内容" placeholder="正在加载…"></textarea>
+      <div class="prompt-status"><span id="persona-state">等待加载</span><span id="persona-count"></span></div>
+    </div>
+  </section>
+
+  <section id="tab-system" class="tab"><div class="page"><div class="page-title"><div><h2>所有群总览</h2><p id="system-summary"></p></div><button id="system-refresh" type="button">刷新</button></div><div id="global-status" class="overview-grid"></div></div></section>
+
+  <section id="tab-database" class="tab">
+    <div class="page-bar"><select id="db-table" aria-label="选择数据表"></select><input id="db-search" type="search" placeholder="搜索内容、群友或 ID" aria-label="搜索群记忆"><span class="spacer"></span><button id="db-refresh" type="button">刷新</button><button id="db-add" type="button" class="primary">新增一条</button></div>
+    <div id="db-records" class="data-table"></div>
+    <div class="pager"><span id="db-count"></span><button id="db-prev" type="button">上一页</button><button id="db-next" type="button">下一页</button></div>
+  </section>
+
+  <section id="tab-stickers" class="tab">
+    <div class="page-bar"><input id="sticker-search" type="search" placeholder="搜索名称、情绪或哈希" aria-label="搜索表情库"><span class="spacer"></span><button id="sticker-refresh" type="button">刷新</button><button id="sticker-add" type="button" class="primary">上传图片</button></div>
+    <p class="page-note">所有授权群共用这里的表情。新上传的图片要先通过审核，审核通过后 Bot 才会发送。</p>
+    <div id="sticker-records" class="sticker-grid"></div>
+    <div class="pager"><span id="sticker-count"></span><button id="sticker-prev" type="button">上一页</button><button id="sticker-next" type="button">下一页</button></div>
+  </section>
+</main>
+</div>
+
+<dialog id="intervention-dialog" class="intervention-dialog" aria-labelledby="intervention-title">
+  <div class="dialog-head"><h2 id="intervention-title">系统干预</h2><button id="intervention-close" type="button" class="icon-button" aria-label="关闭">×</button></div>
+  <p class="hint">后台指令供后续自然触发的回复使用，提交不会立即回复，也不会发送到 QQ。默认随当前对话文本窗口移出而失效。</p>
+  <form id="intervention-form">
+    <div class="intervention-options"><label>范围<select id="intervention-scope"><option value="group">当前群</option><option value="all">所有授权群</option></select></label><label>有效期<select id="intervention-lifetime"><option value="context">当前对话窗口</option><option value="once">下一次自然回复</option><option value="timed">定时失效</option><option value="persistent">直到手动清除</option></select></label><label id="intervention-minutes-row" hidden>分钟<input id="intervention-minutes" type="number" min="1" max="10080" value="30"></label></div>
+    <textarea id="intervention-text" rows="4" maxlength="1500" placeholder="例如：接下来少用括号，优先接群里的话题" aria-label="系统干预内容"></textarea>
+    <div class="dialog-foot"><span id="intervention-window" class="hint"></span><button type="submit" class="primary" id="intervention-save">提交干预</button></div>
+  </form>
+  <div class="intervention-heading"><h3>当前群的干预记录</h3><button id="intervention-clear" type="button" class="danger-text">清除当前群生效项</button></div>
+  <div id="intervention-list"></div>
+</dialog>
+<dialog id="console-dialog" class="console-dialog" aria-labelledby="console-title">
+  <div class="dialog-head"><h2 id="console-title">命令行</h2><button id="console-close" type="button" class="icon-button" aria-label="关闭命令行">×</button></div>
+  <pre id="command-output" aria-live="polite">输入 /help 查看所有命令，按 Tab 自动补全。</pre>
+  <form id="command-form"><span class="prompt" aria-hidden="true">&gt;</span><input id="command" placeholder="/status" aria-label="命令" autocomplete="off" spellcheck="false"><button type="submit" class="primary">执行</button></form>
+</dialog>
+
+<dialog id="store-editor"><form id="store-form"><div class="dialog-head"><h2 id="store-title"></h2><button id="store-close" type="button" class="icon-button" aria-label="关闭">×</button></div><div id="store-fields"></div><div class="dialog-foot"><span id="store-note"></span><button id="store-save" type="submit" class="primary">保存</button></div></form></dialog>
+<div id="toast" class="toast" role="status" hidden></div>
+</body></html>

@@ -39,6 +39,8 @@ class GroupMemory:
                 uses INTEGER DEFAULT 0, positive INTEGER DEFAULT 0, negative INTEGER DEFAULT 0,
                 last_used REAL DEFAULT 0);
             CREATE TABLE IF NOT EXISTS supersessions(old_id TEXT PRIMARY KEY, new_id TEXT);
+            CREATE TABLE IF NOT EXISTS manual_messages(id TEXT PRIMARY KEY, request_id TEXT UNIQUE,
+                sender TEXT, qq_id TEXT, text TEXT, stamp REAL);
         ''')
         salt = self.db.execute("SELECT value FROM meta WHERE key='salt'").fetchone()
         self.salt = salt['value'] if salt else secrets.token_hex(16)
@@ -72,6 +74,13 @@ class GroupMemory:
                 (self.digest(item.get('_uid', '')), name, stamp))
         self.db.commit()
 
+    def record_manual(self,item,request_id):
+        """Store explicit bot speech separately from facts learned about people."""
+        if not item.get('is_bot') or not item.get('_id'):raise ValueError('手动消息必须是已发送的Bot消息')
+        self.db.execute('INSERT OR IGNORE INTO manual_messages VALUES (?,?,?,?,?,?)',
+            (str(item['_id']),request_id,item.get('sender',''),str(item.get('_uid','')),item.get('text',''),item.get('_time',time.time())))
+        self.db.commit()
+
     def prune(self):
         now = time.time()
         self.db.execute('DELETE FROM sources WHERE stamp < ?', (now - 30 * 86400,))
@@ -80,6 +89,7 @@ class GroupMemory:
             (now - 90 * 86400, now - 14 * 86400))
         self.db.execute('DELETE FROM notes WHERE id IN (SELECT id FROM notes ORDER BY stamp DESC LIMIT -1 OFFSET 256)')
         self.db.execute('DELETE FROM people WHERE stamp < ?', (now - 90 * 86400,))
+        self.db.execute('DELETE FROM manual_messages WHERE stamp < ?', (now - 30 * 86400,))
         self.db.execute('DELETE FROM note_metadata WHERE note_id NOT IN (SELECT id FROM notes)')
         self.db.execute('DELETE FROM supersessions WHERE old_id NOT IN (SELECT id FROM notes) OR new_id NOT IN (SELECT id FROM notes)')
         self.db.commit()
@@ -337,6 +347,7 @@ class GroupMemory:
             'expressions': "SELECT COUNT(*) FROM notes WHERE kind='expression'",
             'episodes': "SELECT COUNT(*) FROM notes WHERE kind='episode'",
             'revised_facts': 'SELECT COUNT(*) FROM supersessions',
+            'manual_messages': 'SELECT COUNT(*) FROM manual_messages',
             'pending': 'SELECT COUNT(*) FROM sources WHERE learned=0'}.items()}
 
     def close(self):

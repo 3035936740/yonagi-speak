@@ -11,6 +11,9 @@ from console_config import Config, PROTECTED, read_json, runtime, deleted_ids
 from config_metadata import metadata,HIDDEN_FIELDS
 from debug_references import enrich_quotes, enrich_images, text_chars
 from debug_store import database_view, sticker_view, sticker_image
+from debug_avatars import avatar,enrich_users
+from system_interventions import Interventions
+from manual_outbox import ManualOutbox
 
 ASSETS={'/':'index.html','/app.js':'app.js','/style.css':'style.css','/theme.js':'theme.js'}
 
@@ -51,6 +54,15 @@ class DebugWebUI:
                     if parsed.path=='/api/sticker-image':
                         raw,mime=sticker_image(owner.root,query.get('id',[''])[0]);return self.reply(200,raw,mime)
                     if parsed.path=='/api/system':return self.reply(200,owner.system_status())
+                    if parsed.path=='/api/avatar':
+                        raw,mime=avatar(owner.root,int(query.get('group',['0'])[0]),query.get('kind',[''])[0],query.get('id',[''])[0])
+                        return self.reply(200,raw,mime)
+                    if parsed.path=='/api/interventions':
+                        group=int(query.get('group',[owner.config.load()['group_id']])[0])
+                        return self.reply(200,{'entries':Interventions(owner.root,group).list()})
+                    if parsed.path=='/api/manual-send':
+                        group=int(query.get('group',['0'])[0]);identity=query.get('id',[''])[0]
+                        return self.reply(200,ManualOutbox(owner.root,group).get(identity))
                     return self.reply(404,{'error':'Not found'})
                 except (ValueError,KeyError,OSError) as exc:return self.reply(400,{'error':str(exc)})
             def do_POST(self):
@@ -96,7 +108,10 @@ class DebugWebUI:
         for group in cfg['chat_group_whitelist']:
             folder=runtime(self.root,group,cfg);meta=read_json(folder/'debug-group.json');state=read_json(folder/'state.json')
             groups.append({'id':group,'name':meta.get('name',str(group)),'online':bool(state.get('online')),
-                'stopped':bool(state.get('stopped')),'last_poll':state.get('last_poll')})
+                'enabled':bool(Config(self.root,group).load()['enabled']),
+                'stopped':bool(state.get('stopped')),'pid':state.get('pid'),
+                'error':state.get('error',''),'waiting_for_qq':bool(state.get('waiting_for_qq')),
+                'last_poll':state.get('last_poll')})
         selected=int(query.get('group',[groups[0]['id']])[0])
         if selected not in cfg['chat_group_whitelist']:raise ValueError('该群不在白名单内')
         cfg=Config(self.root,selected).load()
@@ -118,12 +133,19 @@ class DebugWebUI:
         records=records[-cfg['console_max_records']:]
         stored_text_chars=sum(text_chars(row) for row in records)
         records=enrich_quotes(records,folder,hidden)
+        records=enrich_users(records,folder,cfg)
         records=enrich_images(records,folder,self.root/'shared-emoji-library',cfg)
+        records+=Interventions(self.root,selected).events()
+        records.sort(key=lambda row:row.get('time',0))
         kind=query.get('kind',['all'])[0];term=query.get('q',[''])[0].lower()
         filtered=[row for row in records if (kind=='all' or (kind=='chat' and row['kind'] in {'sent','received'})
-            or (kind=='flow' and row['kind'] not in {'sent','received'}))
+            or (kind=='flow' and row['kind'] not in {'sent','received','system'})
+            or (kind=='system' and row['kind']=='system'))
             and term in (' '.join(str(row.get(key,'')) for key in ('text','message_id','reply_id','sender','context_id','trace_id','request_id','role','kind','level'))+' '+json.dumps(row.get('quote',{}),ensure_ascii=False)).lower()]
-        return {'ui_revision':2,'groups':groups,'selected':selected,'events':filtered,'status':{
+        return {'ui_revision':2,'features':['avatars','system_interventions','manual_send','intervention_delete'],'groups':groups,'selected':selected,'events':filtered,'status':{
+            'enabled':bool(cfg['enabled']),
+            'manual_send_ready':bool(state.get('pid')) and read_json(folder/'manual-worker.json').get('pid')==state.get('pid'),
+            'intervention_count':sum(row['status']=='active' for row in Interventions(self.root,selected).list()),
             'online':bool(state.get('online')),'pid':state.get('pid'),'last_poll':state.get('last_poll'),
             'error':state.get('error',''),'waiting_for_qq':bool(state.get('waiting_for_qq')),
             'records':len(records),'shown_records':len(filtered),'text_chars':stored_text_chars,
@@ -166,11 +188,12 @@ class DebugWebUI:
         for group in cfg['chat_group_whitelist']:
             folder=runtime(self.root,group,cfg);state=read_json(folder/'state.json');effective=Config(self.root,group).load()
             groups.append({'id':group,'name':read_json(folder/'debug-group.json').get('name',str(group)),
+                'enabled':bool(effective['enabled']),'waiting_for_qq':bool(state.get('waiting_for_qq')),
                 'online':bool(state.get('online')),'stopped':bool(state.get('stopped')),'pid':state.get('pid'),
                 'last_poll':state.get('last_poll'),'error':state.get('error',''),'model':effective['model'],
                 'effort':effective['reasoning_effort'],'fast':effective['fast_mode'],'name_persona':effective['bot_name'],
                 'model_calls_today':state.get('model_calls_today',0),'memory_stats':state.get('memory_stats',{}),
                 'override_count':len(Config(self.root,group).overrides())})
         return {'groups':groups,'today_model_calls':sum(row['model_calls_today'] for row in groups),
-            'online_groups':sum(row['online'] for row in groups),'total_groups':len(groups),
+            'online_groups':sum(row['online'] and row['enabled'] and not row['stopped'] for row in groups),'total_groups':len(groups),
             'global_model':cfg['model'],'global_name':cfg['bot_name']}

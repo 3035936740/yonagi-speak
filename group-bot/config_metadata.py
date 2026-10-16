@@ -1,6 +1,7 @@
 """Chinese UI labels and contextual help for every public configuration key."""
 
 FIELDS = {
+    'avatar_remote_enabled': ('获取真实QQ头像','开启后向腾讯qlogo.cn提交群号/QQ号以获取群和群友头像，不提交聊天内容。失败使用默认头像，成功缓存6小时；关闭后仅使用已有缓存'),
     'generated_image_ttl_hours': ('生图保留时长（小时）', '默认2小时；发送成功也保留，按生成时的created时间戳判定过期，预览和修改文件时间不延长有效期。只清理Bot生成图，不动群友原图或表情库'),
     'generated_image_cleanup_interval_hours': ('旧版清理间隔（小时）', '兼容旧配置；WebUI使用分钟间隔，未设置分钟值时读取旧小时值并换算'),
     'generated_image_cleanup_mode': ('生图清理方式', '分钟间隔：每隔X分钟检查过期图；每日定时：每天指定时间检查；每张图片到期：按生成时间单独到期检查；Windows任务：Bot关闭也可由本机任务计划程序检查。后台重启先按时间戳补检查，不会把未过期图片清空'),

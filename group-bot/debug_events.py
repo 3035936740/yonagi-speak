@@ -66,6 +66,9 @@ class DebugEvents:
         if 'text' in row:row['text']=row['text'][:limit]
         self.rows.append(row)
         self._save(cfg)
+        if kind in {'received','sent'} and self.group_id in cfg.get('chat_group_whitelist',[]):
+            from system_interventions import Interventions
+            Interventions(self.runtime.parent,self.group_id).observe(row,cfg)
 
     def update_message(self, message_id, text, **data):
         updated = False
