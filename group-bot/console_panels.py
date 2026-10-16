@@ -34,6 +34,13 @@ def config_rows(ui):
 def render(ui,width,height):
     from debug_console import wrap
     panel=ui.panel
+    if panel['kind']=='help':
+        lines=[]
+        for line in ui.notice.splitlines():lines+=wrap(line,width-1)
+        room=max(1,height-3);offset=max(0,min(panel.get('scroll',0),len(lines)-room))
+        panel.update(scroll=offset,page_size=room,line_count=len(lines))
+        header='命令帮助  '+str(offset+1)+'–'+str(min(len(lines),offset+room))+' / '+str(len(lines))+' 行'
+        return '\n'.join([header,'─'*(width-1)]+lines[offset:offset+room]+['↑↓ / PgUp/PgDn 翻页 · Esc 返回聊天 · / 输入命令'])
     if panel['kind']=='status':
         lines=[]
         for line in status(ui).splitlines():lines+=wrap(line,width-1)
@@ -62,6 +69,13 @@ def render(ui,width,height):
 
 def key(ui,char,code):
     panel=ui.panel
+    if panel['kind']=='help':
+        if char=='\x1b':ui.panel=None;ui.notice='已返回聊天';ui.scroll=0
+        elif char=='/':ui.panel=None;ui.buffer='/'
+        else:
+            steps={'H':-1,'P':1,'I':-panel.get('page_size',20),'Q':panel.get('page_size',20)}
+            if code in steps:panel['scroll']=max(0,min(max(0,panel.get('line_count',1)-panel.get('page_size',20)),panel.get('scroll',0)+steps[code]))
+        return
     if panel['kind']=='status':
         if char=='\x1b':ui.panel=None;ui.notice='已返回聊天';ui.scroll=0
         elif char=='/':ui.panel=None;ui.buffer='/'

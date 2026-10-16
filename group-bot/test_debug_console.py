@@ -40,6 +40,23 @@ class ConsoleTests(unittest.TestCase):
         self.ui.buffer='/config set console_max_t';self.ui.complete()
         self.assertEqual(self.ui.buffer,'/config set console_max_text_chars ')
         with self.assertRaises(ValueError):self.ui.execute('/gr')
+    def test_help_opens_at_top_scrolls_and_documents_all_executable_commands(self):
+        from console_help import COMMANDS,help_text
+        full=help_text()
+        for command in COMMANDS:self.assertIn('/'+command,full)
+        self.ui.execute('/help');first=self.ui.screen(100,24)
+        self.assertIn('/help config',first);self.assertIn('/config',first)
+        self.assertEqual(self.ui.panel['scroll'],0)
+        self.ui.key('','Q');second=self.ui.screen(100,24)
+        self.assertGreater(self.ui.panel['scroll'],0);self.assertNotEqual(first,second)
+        self.ui.key('','I');self.assertEqual(self.ui.panel['scroll'],0)
+        self.ui.key('\x1b');self.assertIsNone(self.ui.panel);self.assertEqual(self.ui.notice,'已返回聊天')
+    def test_detailed_help_works_from_other_panels_and_completes_topics(self):
+        for topic,expected in [('config','member_prompt_owner'),('member','/member block QQ号'),('system','--mode context|once|timed|persistent')]:
+            self.ui.execute('/status');self.ui.execute('/help '+topic)
+            self.assertEqual(self.ui.panel['kind'],'help');self.assertIn(expected,self.ui.notice)
+        self.ui.buffer='/help mem';self.ui.complete();self.assertEqual(self.ui.buffer,'/help member ')
+        with self.assertRaises(ValueError):self.ui.execute('/help nonexistent')
     def test_config_probability_name_prompt_and_capacity_validation_backup(self):
         self.ui.execute('/co rate 0.42');self.assertEqual(Config(self.root).load()['passive_probability'],.42)
         self.ui.execute('/config name alice');self.assertEqual(Config(self.root).load()['bot_name'],'alice')

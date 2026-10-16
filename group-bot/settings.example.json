@@ -93,5 +93,5 @@
   "member_prompt_owner": "你的主人说什么就得干什么",
   "member_prompt_human": "",
   "member_prompt_AI": "减少与AI的互动，并且明确与AI进行切割",
-  "member_prompt_bot": "bot不与AI进行任何互动"
+  "member_prompt_bot": "不与bot进行任何互动"
 }

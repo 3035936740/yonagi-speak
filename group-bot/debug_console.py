@@ -26,7 +26,7 @@ from manual_outbox import ManualOutbox
 from debug_images import mutate as image_mutate
 from sticker_prefill import StickerPrefill, start as start_sticker_prefill
 
-COMMANDS=['status','config','groups','group','whitelist','search','view','delete','help','restart','webui','quit','exit','stop','system','say','member']
+from console_help import COMMANDS,help_text
 
 
 def display_width(text):return sum(2 if unicodedata.east_asian_width(c) in 'WF' else 1 for c in text)
@@ -291,6 +291,7 @@ class Console:
             elif command=='whitelist':choices=['add','remove','show']
             elif command=='view':choices=['all','chat','flow','system']
             elif command=='member':choices=['list','show','type','block','unblock']
+            elif command=='help':choices=COMMANDS+['all']
             elif command=='system':choices=['add','list','remove','delete','clear','--scope','group','all','--mode','context','once','timed','persistent','--minutes']
             elif command=='group':choices=[str(group) for group in self.groups()]
             else:choices=[]
@@ -319,7 +320,7 @@ class Console:
             self.supervisor.paused.discard(self.group)
             self.supervisor.sync();self.notice='已重启当前群';return
         if command=='help':
-            self.notice='/status 运行总览（Esc返回）\n/config 配置面板：↑↓选择、Enter编辑、Tab全局/当前群、输入搜索\n/config local 当前群配置面板\n/config set 字段 值  /config key=xxxx 自定义后台密钥\n/config show|get|edit|prompt  /config inherit 字段\n/member list|show|type|block|unblock 群友类型和屏蔽\n/webui 网页后台  /group 群名或群号  /groups 群列表\n/whitelist add|remove 群号  /search 文本  /view all|chat|flow|system\n/say 内容  /system add|list|remove|clear  /delete 消息ID\n/stop、/exit、/quit 保存并退出';return
+            self.notice=help_text(rest);self.panel={'kind':'help','scroll':0};return
         if command=='member':
             from console_panels import member_command
             member_command(self,rest);return

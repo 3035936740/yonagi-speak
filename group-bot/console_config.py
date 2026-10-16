@@ -19,7 +19,7 @@ DEFAULTS = {'bot_name':'yonagi', 'bot_aliases':['Ethereal Paradise','EP'],'avata
     'member_model_block_rules':'案例：同一账号连续多次主动讨论中国政治相关内容时，可屏蔽该账号；单次提及、引用他人或无关同词不算。',
     'member_prompt_owner':'你的主人说什么就得干什么',
     'member_prompt_human':'','member_prompt_AI':'减少与AI的互动，并且明确与AI进行切割',
-    'member_prompt_bot':'bot不与AI进行任何互动',
+    'member_prompt_bot':'不与bot进行任何互动',
     'member_reference_type_enabled':True,'member_reference_aliases_enabled':True,'member_reference_note_enabled':True,
     'member_model_type_enabled':False,'member_model_aliases_enabled':False,'member_model_note_enabled':False,
     'model_timeout_seconds':30,'vision_timeout_seconds':60,'image_timeout_seconds':150,

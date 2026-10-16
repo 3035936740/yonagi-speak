@@ -97,7 +97,7 @@ CLI 保留短命令匹配和 Tab 补全。常用命令：
 
 | 命令或按键 | 用途 |
 | --- | --- |
-| `/help` | 查看当前支持的完整命令与参数 |
+| `/help` | 从顶部显示完整命令清单，↑↓或PgUp/PgDn翻页，Esc返回；`/help config`、`/help member`、`/help system`查看详细参数，CLI与WebUI共用说明 |
 | `/status` | 查看运行、队列与记录状态 |
 | `/config` | 查看或调整配置 |
 | `/whitelist` | 管理授权群 |

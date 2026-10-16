@@ -121,6 +121,13 @@ class WebUITests(unittest.TestCase):
         blocked=self.client.post('/api/action',json={'action':'command','command':'/co e settings','group':100},headers=self.headers)
         self.assertEqual(blocked.status_code,400)
 
+    def test_help_api_uses_current_shared_command_details(self):
+        for command,expected in [('/help','/member list|show|type|block|unblock'),('/help config','member_prompt_owner'),
+            ('/help member','bot主'),('/help system','--mode context|once|timed|persistent')]:
+            response=self.client.post('/api/action',json={'action':'command','command':command,'group':100},headers=self.headers)
+            self.assertEqual(response.status_code,200,response.text)
+            self.assertIn(expected,response.json()['message'])
+
     def test_web_exit_returns_shutdown_and_stops_console_loop(self):
         response=self.client.post('/api/action',json={'action':'command','command':'/ex','group':100},headers=self.headers)
         self.assertEqual(response.status_code,200)
