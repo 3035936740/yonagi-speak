@@ -14,7 +14,6 @@ env/
 htmlcov/
 *.egg-info/
 .ignore/
-/ignore/
 /tools/
 /launch.local.json
 /group-bot/napcat.env
