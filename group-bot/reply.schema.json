@@ -38,7 +38,14 @@
       ]
     },
     "media_id": {
-      "type": "string"
+      "type": "string",
+      "description":"所选第一张表情的真实ID；必须与media_ids首项一致，没有选图时留空。media_kind填该首张的类型"
+    },
+    "media_ids": {
+      "type":"array",
+      "items":{"type":"string"},
+      "maxItems":5,
+      "description":"按发送顺序选择本轮候选中的表情ID，可选多张；不合适则空数组。media_kind/media_id同时填首张，兼容旧版，程序不会重复发送"
     },
     "action": {
       "type": "string",
@@ -64,7 +71,8 @@
         "type": "string",
         "maxLength": 120
       },
-      "maxItems": 3
+      "maxItems": 3,
+      "description":"按真实说话停顿拆成多条完整短消息，不写段落标题，不为凑条数灌水；总文字仍受上限约束。文字先发，media_ids中的表情随后逐张发"
     },
     "reply_mode": {
       "type": "string",
@@ -128,6 +136,7 @@
     "at_message_ids",
     "media_kind",
     "media_id",
+    "media_ids",
     "action",
     "search_query",
     "image_request",

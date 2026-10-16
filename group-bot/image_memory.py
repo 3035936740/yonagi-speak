@@ -4,6 +4,7 @@ import json
 from pathlib import Path
 import re
 from role_analysis import checked
+from image_archive import SummaryOverrides, read as read_image_data, replace_summaries
 
 
 def source_key(data):
@@ -140,6 +141,9 @@ class ImageMemory:
     def lookup(self, key=None, digest=None):
         self.prune()
         digest = digest or self.data['sources'].get(key, {}).get('digest')
+        override = SummaryOverrides(self.path.parent).get(key, digest)
+        if override and (key in self.data['sources'] or digest in self.data['entries']):
+            if checked('vision', override.get('summary'), set()): return dict(override['summary'])
         entry = self.data['entries'].get(digest)
         if entry and checked('vision', entry.get('summary'), set()):
             return dict(entry['summary'])
@@ -154,6 +158,18 @@ class ImageMemory:
             sequence=self.data['sequence']-len(self.data['seen'])+index+1
             keys=[key for key,value in self.data['sources'].items() if value['last_seen']==sequence][:2]
         return [summary for key in keys if (summary:=self.lookup(key=key))]
+
+    def correct_messages(self, messages):
+        overrides = read_image_data(self.path.parent / 'image-summary-edits.json')
+        if not overrides: return []
+        changed = []
+        for message in messages:
+            keys = message.get('_image_hashes', []) or list(message.get('_image_keys', {}).values())
+            if not any(key in overrides or self.data['sources'].get(key, {}).get('digest') in overrides for key in keys): continue
+            text = replace_summaries(message.get('text', ''), [self.lookup(key=key) for key in keys[:2]])
+            if text != message.get('text', ''):
+                message['text'] = text; changed.append(message)
+        return changed
 
     def store(self, key, digest, summary):
         if not checked('vision', summary, set()) or summary['confidence'] < .6:

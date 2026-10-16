@@ -12,6 +12,8 @@ from configure_launch import validate as validate_model
 from storage_io import atomic_write_text, read_text
 
 DEFAULTS = {'bot_name':'yonagi', 'bot_aliases':['Ethereal Paradise','EP'],'avatar_remote_enabled':False,
+    'chat_image_display':'text',
+    'max_reply_parts':6,'max_stickers_per_reply':3,
     'console_max_records':6000, 'console_max_text_chars':6000, 'image_summary_window_messages':2000,
     'image_repeat_window_messages':10, 'image_repeat_min_count':3,
     'image_repeat_pair_confidence':.5, 'image_repeat_full_streak':3, 'role_models':{},
@@ -159,6 +161,9 @@ class Config:
         if cfg['generated_image_cleanup_mode'] not in {'interval','daily','expiry','windows'}:raise ValueError('未知生图清理模式')
         if cfg['generated_image_windows_schedule'] not in {'interval','daily'}:raise ValueError('Windows任务可选分钟间隔或每日定时')
         if cfg['passive_trigger_mode'] not in {'frequency','dynamic'}:raise ValueError('水群触发方式为frequency或dynamic')
+        if cfg['chat_image_display'] not in {'text','image'}:raise ValueError('聊天图片默认显示方式为text或image')
+        if type(cfg['max_reply_parts']) is not int or not 1<=cfg['max_reply_parts']<=10:raise ValueError('单次回复文字条数范围1~10')
+        if type(cfg['max_stickers_per_reply']) is not int or not 1<=cfg['max_stickers_per_reply']<=5:raise ValueError('单次回复表情张数范围1~5')
         if not 30<=cfg['passive_window_seconds']<=180:raise ValueError('水群待处理消息有效期范围30~180秒')
         if not 5<=cfg['passive_round_seconds']<=120:raise ValueError('水群统计轮次范围5~120秒')
         if not 0<=cfg['passive_retry_backoff_seconds']<=300:raise ValueError('水群规划间隔范围0~300秒')

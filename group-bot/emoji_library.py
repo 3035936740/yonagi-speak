@@ -13,7 +13,7 @@ import time
 import tempfile
 import uuid
 import os
-from urllib.parse import urlsplit
+from image_sources import validate_source, ImageDownloadError
 from PIL import Image, ImageDraw
 from style_memory import grams
 from sticker_filter import approved, accepts, valid_classification, FILTER_VERSION, EMOTIONS
@@ -46,7 +46,7 @@ def sticker_source_key(data):
 
 class ReplyText(str):
     def __new__(cls, text, segments=(), route=None, action='chat', image_request='', chunks=None, media_id=None,
-            quote_reply=None, at_uids=()):
+            quote_reply=None, at_uids=(), media_ids=()):
         obj = super().__new__(cls, text)
         obj.segments = list(segments)
         obj.route = route
@@ -54,6 +54,7 @@ class ReplyText(str):
         obj.image_request = image_request
         obj.chunks = chunks
         obj.media_id = media_id
+        obj.media_ids = list(media_ids) or ([media_id] if media_id else [])
         obj.quote_reply = quote_reply
         obj.at_uids = list(at_uids)
         return obj
@@ -62,7 +63,33 @@ class ReplyText(str):
         return bool(str(self)) or bool(self.segments) or self.action == 'generate_image'
 
 
-def selected_media(result, choices):
+def selected_media(result, choices, limit=3, track=False):
+    """Resolve ordered, distinct selections from the supplied candidate shortlist."""
+    identities=result.get('media_ids',[])
+    identities=identities if isinstance(identities,list) else []
+    # Old reply records and old models still use the single-selection fields.
+    if not identities:
+        identities=[result.get('media_id')] if result.get('media_id') else []
+        choices=[item for item in choices if item['kind']==result.get('media_kind')]
+    segments=[];seen=set();count=0
+    for identity in identities[:20]:
+        if not isinstance(identity,str):continue
+        item=next((item for item in choices if item['id']==identity),None)
+        if not item:continue
+        asset=item.get('content_hash') or item.get('hash') or item.get('sha256') or item['id']
+        if asset in seen:continue
+        seen.add(asset)
+        media=_single_media({'media_id':identity,'media_kind':item['kind']},[item])
+        if not media:continue
+        if track:
+            for segment in media:segment['_media_id']=identity
+        if segments:segments.append({'type':'_message_break','data':{}})
+        segments.extend(media);count+=1
+        if count>=max(1,min(5,limit)):break
+    return segments
+
+
+def _single_media(result, choices):
     selected = next((item for item in choices if item['id'] == result.get('media_id')
         and item['kind'] == result.get('media_kind')), None)
     if not selected:
@@ -428,8 +455,10 @@ class EmojiLibrary:
                     if path.parent!=(self.root/'incoming').resolve() or not path.is_file() or path.stat().st_size>2*1024*1024:continue
                     raw=path.read_bytes()
                 else:
-                    url = str(data.get('url', ''));parsed = urlsplit(url)
-                    if parsed.scheme not in {'http', 'https'} or parsed.hostname not in {'multimedia.nt.qq.com.cn', 'gchat.qpic.cn'} or parsed.username or parsed.password or parsed.port not in {None, 80, 443}:
+                    url = str(data.get('url', ''))
+                    try:
+                        validate_source(url)
+                    except ImageDownloadError:
                         continue
                     raw = bytearray()
                     async with client.stream('GET', url, follow_redirects=False) as response:

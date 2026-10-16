@@ -97,8 +97,8 @@
   </section>
 
   <section id="tab-stickers" class="tab">
-    <div class="page-bar"><input id="sticker-search" type="search" placeholder="搜索名称、情绪或哈希" aria-label="搜索表情库"><span class="spacer"></span><button id="sticker-refresh" type="button">刷新</button><button id="sticker-add" type="button" class="primary">上传图片</button></div>
-    <p class="page-note">所有授权群共用这里的表情。新上传的图片要先通过审核，审核通过后 Bot 才会发送。</p>
+    <div class="page-bar"><input id="sticker-search" type="search" placeholder="搜索名称、情绪或哈希" aria-label="搜索表情库"><span class="spacer"></span><button id="sticker-refresh" type="button">刷新</button><button id="sticker-add" type="button" class="primary">手动录入表情包</button></div>
+    <p class="page-note">所有授权群共用。可人工确认直接入库，也可交给自动审核；支持从聊天图片详情收录。</p>
     <div id="sticker-records" class="sticker-grid"></div>
     <div class="pager"><span id="sticker-count"></span><button id="sticker-prev" type="button">上一页</button><button id="sticker-next" type="button">下一页</button></div>
   </section>
@@ -122,6 +122,7 @@
   <form id="command-form"><span class="prompt" aria-hidden="true">&gt;</span><input id="command" placeholder="/status" aria-label="命令" autocomplete="off" spellcheck="false"><button type="submit" class="primary">执行</button></form>
 </dialog>
 
-<dialog id="store-editor"><form id="store-form"><div class="dialog-head"><h2 id="store-title"></h2><button id="store-close" type="button" class="icon-button" aria-label="关闭">×</button></div><div id="store-fields"></div><div class="dialog-foot"><span id="store-note"></span><button id="store-save" type="submit" class="primary">保存</button></div></form></dialog>
+<dialog id="store-editor"><form id="store-form"><div class="dialog-head"><h2 id="store-title"></h2><button id="store-close" type="button" class="icon-button" aria-label="关闭">×</button></div><div id="store-fields"></div><p id="store-ai-status" class="store-ai-status" role="status" hidden></p><div class="dialog-foot"><span id="store-note"></span><div class="store-actions"><button id="store-ai" type="button" hidden>AI 识别填入</button><button id="store-save" type="submit" class="primary">保存</button></div></div></form></dialog>
+<dialog id="image-viewer" aria-labelledby="image-viewer-title"><div class="dialog-head"><h2 id="image-viewer-title">原图</h2><button id="image-viewer-close" type="button" class="icon-button" aria-label="关闭原图">×</button></div><div class="original-image-body"><img id="image-viewer-img" alt="原图"></div><p class="page-note">保留原始图片，GIF可播放。点击图片切换适应窗口 / 原始尺寸。</p></dialog>
 <div id="toast" class="toast" role="status" hidden></div>
 </body></html>

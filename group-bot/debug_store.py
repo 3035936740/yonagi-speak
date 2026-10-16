@@ -147,15 +147,44 @@ def database_mutate(root,group,table,mode,values=None,row_id=None,expected=None)
 def library(root):return EmojiLibrary(Path(root)/'shared-emoji-library',Path(root)/'qq-faces.json',shared=True)
 
 
+def approve_image(lib, path, values):
+    """Explicit operator admission preserves original bytes and overrides auto refusal."""
+    import hashlib
+    from emoji_assets import own_asset
+    from sticker_filter import FILTER_VERSION
+    limits = {'label':80, 'description':35, 'emotion':20, 'use_when':30}
+    if not isinstance(values, dict): raise ValueError('表情资料必须是对象')
+    for name, limit in limits.items():
+        value = values.get(name, '')
+        if not isinstance(value, str) or len(value) > limit: raise ValueError('表情字段长度或类型不正确')
+    if values.get('emotion', '其他') not in EMOTIONS: raise ValueError('未知情绪分类')
+    if not (values.get('label', '').strip() or values.get('description', '').strip()): raise ValueError('请填写表情名称或说明')
+    raw = Path(path).read_bytes(); digest = hashlib.sha256(raw).hexdigest(); key = 's' + digest[:16]
+    with lib.transaction():
+        backup = lib.root/'admin-backups'; backup.mkdir(exist_ok=True)
+        atomic(backup/(str(time.time_ns())+'.json'), {'index':lib.items, 'hashes':lib.hashes, 'aliases':lib.aliases, 'rejected':lib.rejected})
+        assets = own_asset(lib.root, key, path, digest)
+        previous = lib.items.get(key, {})
+        lib.items[key] = {**previous, **assets, 'id':key, 'kind':'sticker', 'time':time.time(),
+            'label':values.get('label') or values.get('description'), 'description':values.get('description', ''),
+            'emotion':values.get('emotion', '其他'), 'use_when':values.get('use_when', ''),
+            'asset_type':'sticker', 'sticker_confidence':1.0, 'filter_version':FILTER_VERSION,
+            'admission_reason':'人工确认收录', 'manual_admission':True, 'metadata_edited':time.time()}
+        lib.hashes[digest] = key; lib.rejected.pop(key, None); lib.save()
+    return {'ok':True, 'message':'已人工确认加入共享表情库，所有授权群可使用', 'id':key}
+
+
 def sticker_view(root,query='',offset=0):
     lib=library(root);rows=[]
     for key,item in lib.items.items():
         market=item.get('kind')=='market_face';name=str(item.get('emoji_name') or item.get('label') or item.get('data',{}).get('summary') or '未命名').strip('[]')
         title='['+str(item.get('package_name') or '未获取表情包名')+'_'+name+']' if market else str(item.get('description') or item.get('label') or key)
+        if not market and item.get('metadata_edited') and item.get('label'):title=item['label']
         rows.append({'id':key,'kind':item.get('kind'),'title':title,'label':item.get('label',''),
             'description':item.get('description',''),'emotion':item.get('emotion',''),'use_when':item.get('use_when',''),
             'package_name':item.get('package_name',''),'emoji_name':item.get('emoji_name',name),
             'state':'approved' if market or approved(item) else 'unreviewed','uses':item.get('uses',0),
+            'manual_admission':bool(item.get('manual_admission')),
             'content_hash':item.get('content_hash',''),'time':item.get('time',0)})
     for key,item in lib.rejected.items():
         rows.append({'id':key,'kind':'rejected','title':'未收录 · '+item.get('asset_type','未知'),
@@ -210,6 +239,10 @@ def sticker_mutate(root,mode,key='',values=None):
         incoming=lib.root/'incoming';incoming.mkdir(exist_ok=True);identity='u'+digest[:16]
         path=incoming/(identity+'.'+extension)
         if not path.exists():path.write_bytes(raw)
+        if values.get('admission')=='manual':
+            result=approve_image(lib,path,values)
+            path.unlink(missing_ok=True);(incoming/(identity+'.json')).unlink(missing_ok=True)
+            return result
         atomic(incoming/(identity+'.json'),{'path':path.name,'label':str(values.get('label',''))[:80],'time':time.time(),'digest':digest})
         return {'ok':True,'message':'已加入待审核队列，审核通过后才能发送'}
     if mode not in {'update','delete'}:raise ValueError('未知表情库操作')

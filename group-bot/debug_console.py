@@ -21,8 +21,10 @@ from debug_store import database_mutate, sticker_mutate
 from runtime_paths import prepare_runtime_paths
 from system_interventions import command as intervention_command,Interventions
 from manual_outbox import ManualOutbox
+from debug_images import mutate as image_mutate
+from sticker_prefill import StickerPrefill, start as start_sticker_prefill
 
-COMMANDS=['status','config','groups','group','whitelist','search','view','delete','help','restart','webui','quit','exit','system','say']
+COMMANDS=['status','config','groups','group','whitelist','search','view','delete','help','restart','webui','quit','exit','stop','system','say']
 
 
 def display_width(text):return sum(2 if unicodedata.east_asian_width(c) in 'WF' else 1 for c in text)
@@ -189,6 +191,13 @@ class Console:
                     value.get('values'),value.get('row_id'),value.get('expected')),'selected':group}
             elif action=='sticker':
                 return {**sticker_mutate(self.root,str(value.get('mode','')),str(value.get('id','')),value.get('values')),'selected':group}
+            elif action=='image':
+                return {**image_mutate(self.root,group,str(value.get('mode','')),
+                    str(value.get('message_id','')),str(value.get('key','')),value.get('values')),'selected':group}
+            elif action=='sticker_prefill':
+                job=(StickerPrefill(self.root,group).cancel(str(value.get('id',''))) if value.get('mode')=='cancel'
+                    else start_sticker_prefill(self.root,group,value))
+                return {'ok':True,'job':job,'selected':group,'message':'AI识别只填入表单，不自动保存'}
             elif action=='config_inherit':
                 self.config.reset(str(value.get('key','')));self.notice='已恢复继承全局设置'
             elif action=='system':
@@ -283,8 +292,8 @@ class Console:
         parts=text.lstrip('/').split(maxsplit=1)
         if not parts:return
         command=unique(parts[0],COMMANDS);rest=parts[1] if len(parts)>1 else ''
-        if command in {'quit','exit'}:
-            if rest:raise ValueError('/exit 或 /quit 不需要参数')
+        if command in {'quit','exit','stop'}:
+            if rest:raise ValueError('/exit、/quit 或 /stop 不需要参数')
             self.running=False;self.notice='正在保存记录并退出；所有授权群后台及 WebUI 将停止';return
         if command=='webui':self.open_webui();return
         if command=='system':
@@ -297,7 +306,7 @@ class Console:
             self.supervisor.paused.discard(self.group)
             self.supervisor.sync();self.notice='已重启当前群';return
         if command=='help':
-            self.notice='/webui 打开网页调试 /status /config show|get|set|edit|prompt /config name 新名字 /config rate 0.35 /whitelist add 群号 /group 群名或群号 /search 文本 /view all|chat|flow|system /say TEXT /system add|list|remove|delete|clear [--scope group|all] [--mode context|once|timed|persistent] [--minutes 30] 内容 /delete 消息ID /exit 或 /quit 退出';return
+            self.notice='/webui 打开网页调试 /status /config show|get|set|edit|prompt /config name 新名字 /config rate 0.35 /whitelist add 群号 /group 群名或群号 /search 文本 /view all|chat|flow|system /say TEXT /system add|list|remove|delete|clear [--scope group|all] [--mode context|once|timed|persistent] [--minutes 30] 内容 /delete 消息ID /exit、/quit 或 /stop 退出';return
         if command=='status':
             cfg=self.config.load();folder=runtime(self.root,self.group,cfg);state=read_json(folder/'state.json')
             cache=read_json(folder/'image-memory.json');rows=self.rows.get(self.group,[])

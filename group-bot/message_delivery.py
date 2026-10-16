@@ -31,13 +31,15 @@ def attach_market_fallbacks(plan, items):
 def delivery_plan(segments, group_id):
     if group_id not in authorized_groups():
         raise ValueError('Unauthorized destination')
-    plan, regular = [], []
+    plan, regular, media_ids = [], [], []
 
     def flush():
         if any(s['type'] != 'reply' for s in regular):
             plan.append({'action': 'send_group_msg', 'params': {
                 'group_id': group_id, 'message': list(regular)}})
+            if media_ids:plan[-1]['_media_ids']=list(media_ids)
         regular.clear()
+        media_ids.clear()
 
     for segment in segments:
         if segment['type'] == 'reply' and not re.fullmatch(r'-?\d+',str(segment.get('data',{}).get('id',''))):
@@ -56,9 +58,13 @@ def delivery_plan(segments, group_id):
             packet = market_face_packet(segment.get('data', {}).get('market_face'))
             if packet:
                 part['_market_face'] = packet
+            if segment.get('_media_id'):part['_media_ids']=[segment['_media_id']]
             plan.append(part)
         else:
-            regular.append(segment)
+            # Selection bookkeeping belongs to the outbox, never the QQ API.
+            regular.append({'type':segment['type'],'data':dict(segment.get('data',{}))})
+            if segment.get('_media_id') and segment['_media_id'] not in media_ids:
+                media_ids.append(segment['_media_id'])
     flush()
     return plan
 
@@ -102,7 +108,13 @@ async def deliver_one(api, client, env, plan):
     return result or {}
 
 
-async def deliver_burst(api, client, env, plan, allowed, on_sent, delay=(0.35, 0.85)):
+def typing_delay(part):
+    text=''.join(str(s.get('data',{}).get('text','')) for s in part.get('params',{}).get('message',[])
+        if s.get('type')=='text')
+    return random.uniform(.55,1.05)+min(2,len(text)*.035)
+
+
+async def deliver_burst(api, client, env, plan, allowed, on_sent, delay=None):
     """Send short parts together, checking budgets and checkpointing every success."""
     last = {}
     sent = 0
@@ -112,7 +124,7 @@ async def deliver_burst(api, client, env, plan, allowed, on_sent, delay=(0.35, 0
         on_sent(last, part)
         sent += 1
         # Bound one burst even if an old pending file contains more messages.
-        if not plan or sent >= 3:
+        if not plan or sent >= 15 or not allowed():
             break
-        await asyncio.sleep(random.uniform(*delay))
+        await asyncio.sleep(random.uniform(*delay) if delay is not None else typing_delay(plan[0]))
     return last

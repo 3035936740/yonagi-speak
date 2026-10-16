@@ -6,7 +6,7 @@ import time
 
 
 FIELDS = ('sender', 'text', 'at_bot', 'is_bot', '_time', '_uid', '_id',
-    '_at_ids', '_reply_id', '_audience', '_reply_to_uid', '_media_sent', '_group_id', '_nickname', '_card', '_image_hashes','_manual','_manual_request_id')
+    '_at_ids', '_reply_id', '_audience', '_reply_to_uid', '_media_sent', '_group_id', '_nickname', '_card', '_image_hashes','_manual','_manual_request_id','_image_count','_sticker_ids')
 
 
 def compact(item):
@@ -14,6 +14,8 @@ def compact(item):
         return None
     saved = {key: item[key] for key in FIELDS if key in item}
     hashes = item.get('_image_hashes', []) or list(item.get('_image_keys', {}).values())
+    count=item.get('_image_count',len(item.get('_images',[])))
+    if isinstance(count,int) and not isinstance(count,bool) and count>0:saved['_image_count']=min(2,count)
     if hashes:
         import re
         saved['_image_hashes'] = [value for value in hashes[:2]
@@ -30,6 +32,8 @@ def compact(item):
         saved['_reply_id'] = str(saved['_reply_id'])[:80]
     if '_at_ids' in saved:
         saved['_at_ids'] = [str(value)[:40] for value in saved['_at_ids'][:8]]
+    if '_sticker_ids' in saved:
+        saved['_sticker_ids']=[str(value)[:80] for value in saved['_sticker_ids'][:5]]
     return saved
 
 

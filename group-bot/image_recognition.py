@@ -1,6 +1,8 @@
 """Bounded background image queue with shared foreground recognition jobs."""
 import asyncio
+import logging
 from image_memory import source_key
+from image_sources import failure_details
 
 
 class ImageRecognition:
@@ -54,8 +56,9 @@ class ImageRecognition:
                         summary = await self.read(url, key)
                         if summary:
                             summaries.append(summary)
-                    except Exception:
-                        pass
+                    except Exception as error:
+                        logging.getLogger('qq-group-bot').warning('Background image recognition unavailable; %s',
+                            failure_details(error, url))
                 self.publish(item, summaries, 'read' if summaries else 'unavailable')
             finally:
                 self.queue.task_done()

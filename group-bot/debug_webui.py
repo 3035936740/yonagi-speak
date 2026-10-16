@@ -14,6 +14,8 @@ from debug_store import database_view, sticker_view, sticker_image
 from debug_avatars import avatar,enrich_users
 from system_interventions import Interventions
 from manual_outbox import ManualOutbox
+from debug_images import image_bytes
+from sticker_prefill import StickerPrefill
 
 ASSETS={'/':'index.html','/app.js':'app.js','/style.css':'style.css','/theme.js':'theme.js'}
 
@@ -53,6 +55,10 @@ class DebugWebUI:
                     if parsed.path=='/api/stickers':return self.reply(200,sticker_view(owner.root,query.get('q',[''])[0],query.get('offset',[0])[0]))
                     if parsed.path=='/api/sticker-image':
                         raw,mime=sticker_image(owner.root,query.get('id',[''])[0]);return self.reply(200,raw,mime)
+                    if parsed.path=='/api/message-image':
+                        raw,mime=image_bytes(owner.root,int(query.get('group',['0'])[0]),
+                            query.get('message_id',[''])[0],query.get('key',[''])[0])
+                        return self.reply(200,raw,mime)
                     if parsed.path=='/api/system':return self.reply(200,owner.system_status())
                     if parsed.path=='/api/avatar':
                         raw,mime=avatar(owner.root,int(query.get('group',['0'])[0]),query.get('kind',[''])[0],query.get('id',[''])[0])
@@ -63,6 +69,9 @@ class DebugWebUI:
                     if parsed.path=='/api/manual-send':
                         group=int(query.get('group',['0'])[0]);identity=query.get('id',[''])[0]
                         return self.reply(200,ManualOutbox(owner.root,group).get(identity))
+                    if parsed.path=='/api/sticker-prefill':
+                        group=int(query.get('group',['0'])[0])
+                        return self.reply(200,StickerPrefill(owner.root,group).get(query.get('id',[''])[0]))
                     return self.reply(404,{'error':'Not found'})
                 except (ValueError,KeyError,OSError) as exc:return self.reply(400,{'error':str(exc)})
             def do_POST(self):
@@ -142,14 +151,16 @@ class DebugWebUI:
             or (kind=='flow' and row['kind'] not in {'sent','received','system'})
             or (kind=='system' and row['kind']=='system'))
             and term in (' '.join(str(row.get(key,'')) for key in ('text','message_id','reply_id','sender','context_id','trace_id','request_id','role','kind','level'))+' '+json.dumps(row.get('quote',{}),ensure_ascii=False)).lower()]
-        return {'ui_revision':2,'features':['avatars','system_interventions','manual_send','intervention_delete'],'groups':groups,'selected':selected,'events':filtered,'status':{
+        return {'ui_revision':2,'features':['avatars','system_interventions','manual_send','intervention_delete','image_management','sticker_ai_prefill'],'groups':groups,'selected':selected,'events':filtered,'status':{
             'enabled':bool(cfg['enabled']),
             'manual_send_ready':bool(state.get('pid')) and read_json(folder/'manual-worker.json').get('pid')==state.get('pid'),
+            'sticker_prefill_ready':bool(state.get('pid')) and read_json(folder/'sticker-prefill-worker.json').get('pid')==state.get('pid'),
             'intervention_count':sum(row['status']=='active' for row in Interventions(self.root,selected).list()),
             'online':bool(state.get('online')),'pid':state.get('pid'),'last_poll':state.get('last_poll'),
             'error':state.get('error',''),'waiting_for_qq':bool(state.get('waiting_for_qq')),
             'records':len(records),'shown_records':len(filtered),'text_chars':stored_text_chars,
             'text_limit':cfg['console_max_text_chars'],'prompt_limit':cfg['max_prompt_chars'],
+            'chat_image_display':cfg['chat_image_display'],
             'model_calls_today':state.get('model_calls_today',0),'image_summaries':len(cache.get('entries',{})),
             'observed_messages':cache.get('sequence',0),'memory_stats':state.get('memory_stats',{}),
             'image_cleanup':{**read_json(folder/'image-cleanup-state.json'),

@@ -3,6 +3,13 @@ import random
 import re
 
 
+def delivery_preferences(cfg):
+    """One draw per reply; successful draws become actual grounded attachments."""
+    return {'allow_at':random.random()<cfg.get('at_reply_probability',.5),
+        'allow_quote':random.random()<cfg.get('quote_reply_probability',.5),
+        'auto_target':True}
+
+
 def preferences(cfg, has_stickers, target=None):
     from interaction import social_act
     target = target or {}
@@ -47,7 +54,10 @@ def preferences(cfg, has_stickers, target=None):
         'prefer_no_words_reaction':bool(allow_reaction and random.random()<no_words_rate),
         'allow_followup_sticker': allow_followup,
         'prefer_followup_sticker': followup,
-        'allow_burst': random.random() < cfg.get('burst_reply_probability', 0.65),
+        'allow_burst': cfg.get('burst_reply_probability', 0.65)>0,
+        'prefer_burst': random.random() < cfg.get('burst_reply_probability', 0.65),
+        'max_text_parts':cfg.get('max_reply_parts',6),
+        'max_stickers':cfg.get('max_stickers_per_reply',3),
         'social_act': act,
         'peer_voice': 'light_tease' if friendly_tease else 'casual_peer' if technical else 'natural',
         'allow_light_teasing': friendly_tease,
@@ -72,10 +82,11 @@ def allowed_media(media, text, style):
     return media if style.get('allow_no_words_reaction') else []
 
 
-def reply_chunks(result, text, limit, allow_burst, has_media=False):
+def reply_chunks(result, text, limit, allow_burst, has_media=False, maximum=6):
     """Honor semantic chunks; preserve URLs, emoticons and short one-liners."""
     supplied = result.get('text_parts', [])
-    if isinstance(supplied, list) and 1 <= len(supplied) <= 3 and all(isinstance(p, str) for p in supplied):
+    maximum=max(1,min(10,maximum))
+    if isinstance(supplied, list) and 1 <= len(supplied) <= 10 and all(isinstance(p, str) for p in supplied):
         parts = [p.strip().rstrip('。').rstrip() for p in supplied if p.strip()]
         # Reject mismatched alternate text: validate the exact content being sent.
         if not parts or sum(map(len, parts)) > limit or any('[CQ:' in p or '```' in p for p in parts):
@@ -83,7 +94,7 @@ def reply_chunks(result, text, limit, allow_burst, has_media=False):
     else:
         parts = [text] if text else []
     single=parts[0] if len(parts)==1 else ''
-    threshold=70 if supplied else 24
+    threshold=24
     if allow_burst and len(single)>=threshold and not re.search(r'https?://|www\.|[A-Za-z]:[\\/]',single):
         # Even a model's one oversized text_part may be split at semantic
         # punctuation. Keep every character of every clause, never hard-cut.
@@ -98,7 +109,6 @@ def reply_chunks(result, text, limit, allow_burst, has_media=False):
             candidate.append(single[start:].strip());parts=[p for p in candidate if p]
     if not allow_burst:
         return ['，'.join(parts)] if parts else []
-    maximum = 2 if has_media else 3
     if len(parts) > maximum:
         parts = parts[:maximum - 1] + ['，'.join(parts[maximum - 1:])]
     return parts
