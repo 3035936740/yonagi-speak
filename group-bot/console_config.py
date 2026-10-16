@@ -13,7 +13,8 @@ from configure_launch import validate as validate_model
 from storage_io import atomic_write_text, read_text
 
 DEFAULTS = {'bot_name':'yonagi', 'bot_aliases':['Ethereal Paradise','EP'],'avatar_remote_enabled':False,
-    'member_auto_bot_marking_enabled':True,'member_auto_bot_min_observations':3,
+    'member_auto_bot_marking_enabled':True,'member_auto_bot_min_observations':10,
+    'member_auto_bot_window_messages':200,'member_auto_bot_command_prefixes':['/','!','！','.','。','#','y'],
     'member_reference_type_enabled':True,'member_reference_aliases_enabled':True,'member_reference_note_enabled':True,
     'member_model_type_enabled':False,'member_model_aliases_enabled':False,'member_model_note_enabled':False,
     'model_timeout_seconds':30,'vision_timeout_seconds':60,'image_timeout_seconds':150,
@@ -153,7 +154,10 @@ class Config:
                 if ('max_' in key or key in {'poll_seconds','context_messages','image_repeat_min_count','image_repeat_full_streak','image_repeat_window_messages','image_summary_window_messages'}) and value<=0:raise ValueError(key+' 必须大于0')
             elif isinstance(current[key],str) and (not isinstance(value,str) or len(value)>1000):raise ValueError(key+' 必须为短文本')
         if not 24<=cfg['recent_chat_journal_max_messages']<=100000:raise ValueError('近期记录条数范围24~100000')
-        if not 3<=cfg['member_auto_bot_min_observations']<=24:raise ValueError('自动bot标记需要3～24次独立指令响应')
+        if not 20<=cfg['member_auto_bot_window_messages']<=2000:raise ValueError('自动bot判断消息窗口范围20～2000条')
+        if not 2<=cfg['member_auto_bot_min_observations']<=cfg['member_auto_bot_window_messages']//2:raise ValueError('同前缀响应阈值至少2次，不能超过消息窗口的一半')
+        prefixes=cfg['member_auto_bot_command_prefixes']
+        if not isinstance(prefixes,list) or not 1<=len(prefixes)<=32 or any(not isinstance(p,str) or not p.strip() or p!=p.strip() or len(p)>12 or any(c.isspace() for c in p) for p in prefixes):raise ValueError('指令前缀须为1～32个短文本，每个最多12字且不含空白')
         for key in ('model_timeout_seconds','vision_timeout_seconds','image_timeout_seconds'):
             if not 1<=cfg[key]<=7200:raise ValueError(key+' 范围1～7200秒')
         if not 100<=cfg['console_max_records']<=100000:raise ValueError('控制台记录条数范围100~100000')

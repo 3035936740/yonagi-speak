@@ -10,8 +10,8 @@
   "member_model_type_enabled": false,
   "member_model_aliases_enabled": false,
   "member_model_note_enabled": false,
-  "webui_host":"127.0.0.1",
-  "webui_port":0,
+  "webui_host": "127.0.0.1",
+  "webui_port": 0,
   "model": "gpt-6-luna",
   "reasoning_effort": "low",
   "fast_mode": false,
@@ -73,5 +73,17 @@
   "image_repeat_min_count": 3,
   "image_repeat_pair_confidence": 0.5,
   "image_repeat_full_streak": 3,
-  "role_models": {}
+  "role_models": {},
+  "member_auto_bot_marking_enabled": true,
+  "member_auto_bot_window_messages": 200,
+  "member_auto_bot_min_observations": 10,
+  "member_auto_bot_command_prefixes": [
+    "/",
+    "!",
+    "！",
+    ".",
+    "。",
+    "#",
+    "y"
+  ]
 }

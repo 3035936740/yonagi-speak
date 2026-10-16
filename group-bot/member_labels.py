@@ -3,6 +3,7 @@ import json
 from pathlib import Path
 import re
 import time
+import unicodedata
 
 from console_config import Config,read_json,runtime
 from group_identity import qq_id
@@ -10,6 +11,59 @@ from image_archive import locked
 from storage_io import atomic_write_text
 
 LABELS={'AI','bot','human'}
+COMMAND_PREFIXES=['/','!','！','.','。','#','y']
+
+
+def command_start(text,prefixes=COMMAND_PREFIXES):
+    """Match an explicit command prefix only at the start, after optional @ IDs."""
+    text=unicodedata.normalize('NFKC',str(text)).strip()
+    text=re.sub(r'^(?:@\d+\s*)+','',text).lstrip()
+    for prefix in sorted({unicodedata.normalize('NFKC',p).casefold() for p in prefixes},key=len,reverse=True):
+        if not text.casefold().startswith(prefix):continue
+        rest=text[len(prefix):]
+        if not rest.strip() or not rest.lstrip()[0].isalnum():continue
+        # A short Latin prefix may introduce Chinese or a separated argument,
+        # but must not turn ordinary English words such as "yes" into commands.
+        if prefix.isascii() and prefix.isalpha() and rest[0].isascii() and rest[0].isalpha():continue
+        if prefix=='.' and rest.lstrip()[0].isdigit():continue
+        token=re.match(r'\S+',text)
+        return {'prefix':prefix,'command':token.group(0)[:80]}
+    return None
+
+
+def rule_message(item,prefixes):
+    return {'id':str(item.get('_id','')),'uid':str(item.get('_uid','')),
+        'time':item.get('_time',0),'self':bool(item.get('is_bot')),
+        'start':str(item.get('text',''))[:160],'command':command_start(item.get('text',''),prefixes),
+        'content':bool(item.get('_images') or str(item.get('text','')).strip()),
+        'image':bool(item.get('_images')),'reply':str(item.get('_reply_id','')),
+        'ats':list(map(str,item.get('_at_ids',[])))}
+
+
+def response_evidence(messages):
+    evidence=[];used=set()
+    for index,response in enumerate(messages):
+        account=response['uid']
+        if response['self'] or response['command'] or not response['content']:continue
+        commands=[row for row in messages[:index] if row['command'] and not row['self']
+            and row['uid']!=account and 0<=response['time']-row['time']<=60
+            and (account,row['id']) not in used
+            and (not row['ats'] or account in row['ats'])]
+        quoted=[row for row in commands if response['reply']==row['id']]
+        addressed=[row for row in commands if row['uid'] in response['ats']]
+        anchored=quoted or addressed
+        # Without a quote/@, text must immediately follow the request. Images
+        # can take longer, but still require one unambiguous recent command.
+        candidates=anchored or (commands if len(commands)==1 and not response['reply'] and not response['ats']
+            and (response['image'] or index>0 and messages[index-1]['id']==commands[0]['id']) else [])
+        if len(candidates)!=1:continue
+        command=candidates[0]
+        pair=(account,command['id'])
+        if pair in used:continue
+        used.add(pair)
+        evidence.append({'account':account,'command_id':command['id'],'response_id':response['id'],'time':response['time'],
+            **command['command'],'anchor':'reply_or_at' if anchored else 'unique_recent_image' if response['image'] else 'adjacent_response'})
+    return evidence
 
 
 class MemberLabels:
@@ -30,7 +84,7 @@ class MemberLabels:
             if label=='clear':
                 previous=data['members'].pop(account,{})
                 kept=aliases if aliases is not None else self.effective(previous)['aliases']
-                row={'aliases':kept,'updated_at':time.time()} if kept else {}
+                row={'aliases':kept,'rule_after':time.time(),'updated_at':time.time()}
                 if row:data['members'][account]=row
                 self.save(data);return self.effective(row)
             row=data['members'].setdefault(account,{})
@@ -53,37 +107,45 @@ class MemberLabels:
             'aliases':row.get('aliases',[]) if manual_aliases else row.get('model_aliases',[]),
             'aliases_source':'manual' if manual_aliases else 'model' if row.get('model_aliases') else 'unmarked',
             'model_history':row.get('model_history',[])[-6:],
+            'prefix_counts':row.get('prefix_counts',{}),
             'observations':len(row.get('evidence',[])),'evidence':row.get('evidence',[])[-6:]}
     def facts(self):
         return {account:self.effective(row) for account,row in self.read().get('members',{}).items()}
     def observe(self,item,history,cfg):
-        if not cfg.get('member_auto_bot_marking_enabled',True) or item.get('is_bot'):return False
+        if not cfg.get('member_auto_bot_marking_enabled',True):return False
         account=qq_id(item.get('_uid'));message_id=str(item.get('_id',''))
         if not account or not message_id:return False
-        timestamp=item.get('_time',time.time())
-        commands=[entry for entry in list(history)[-30:] if not entry.get('is_bot')
-            and str(entry.get('_uid'))!=account and 0<=timestamp-entry.get('_time',0)<=20
-            and re.match(r'^\s*(?:@\d+\s*)?/(?:pgr|a)(?=\s|$)',str(entry.get('text','')),re.I)]
-        anchored=[entry for entry in commands if str(item.get('_reply_id',''))==str(entry.get('_id',''))
-            or str(entry.get('_uid')) in set(map(str,item.get('_at_ids',[])))]
-        # An unquoted /pgr image needs one unambiguous recent request. /a text
-        # needs a real reply/@ anchor, not just an unrelated line nearby.
-        candidates=anchored or ([commands[0]] if len(commands)==1 and item.get('_images')
-            and re.match(r'^\s*(?:@\d+\s*)?/pgr(?=\s|$)',str(commands[0].get('text','')),re.I) else [])
-        if len(candidates)!=1:return False
-        command=candidates[0];command_id=str(command.get('_id',''))
-        if not command_id or not (item.get('_images') or item.get('text','').strip()):return False
+        window=cfg.get('member_auto_bot_window_messages',200)
+        prefixes=cfg.get('member_auto_bot_command_prefixes',COMMAND_PREFIXES)
         with locked(self.folder/'member-labels.lock'):
-            data=self.read();row=data['members'].setdefault(account,{})
-            evidence=[entry for entry in row.get('evidence',[]) if timestamp-entry.get('time',0)<30*86400]
-            if any(entry['command_id']==command_id for entry in evidence):return False
-            evidence.append({'command_id':command_id,'response_id':message_id,'time':timestamp,
-                'command':'/pgr' if '/pgr' in command['text'].lower() else '/a',
-                'anchor':'reply_or_at' if anchored else 'unique_recent_image'})
-            row['evidence']=evidence[-24:];before=row.get('auto_label','')
-            if len(evidence)>=cfg.get('member_auto_bot_min_observations',3):row['auto_label']='bot'
-            row['updated_at']=time.time();self.save(data)
-            return row.get('auto_label','')!=before
+            data=self.read()
+            messages=data.get('rule_messages')
+            if messages is None:messages=[rule_message(row,prefixes) for row in list(history)[-window:] if row.get('_id')]
+            else:
+                known={row['id'] for row in messages};last_time=max((row['time'] for row in messages),default=0)
+                messages.extend(rule_message(row,prefixes) for row in list(history)[-window:]
+                    if row.get('_id') and str(row['_id']) not in known and row.get('_time',0)>=last_time)
+            if message_id not in {row['id'] for row in messages}:messages.append(rule_message(item,prefixes))
+            messages=sorted(messages,key=lambda row:row['time'])[-window:];data['rule_messages']=messages
+            for message in messages:message['command']=command_start(message.get('start',''),prefixes)
+            changed=False
+            grouped={}
+            for entry in response_evidence(messages):
+                uid=entry.pop('account');grouped.setdefault(uid,[]).append(entry)
+            # Refresh the rolling evidence for previously seen responders too.
+            accounts=set(data['members'])|set(grouped)
+            for uid in accounts:
+                evidence=[entry for entry in grouped.get(uid,[]) if entry['time']>data['members'].get(uid,{}).get('rule_after',0)]
+                if not evidence and uid not in data['members']:continue
+                row=data['members'].setdefault(uid,{})
+                row['evidence']=evidence
+                counts={}
+                for entry in evidence:counts[entry['prefix']]=counts.get(entry['prefix'],0)+1
+                row['prefix_counts']=counts
+                if max(counts.values(),default=0)>=cfg.get('member_auto_bot_min_observations',10) and row.get('auto_label')!='bot':
+                    row.update(auto_label='bot',updated_at=time.time());changed=changed or uid==account
+            self.save(data)
+            return changed
 
 
 def store(root,group):

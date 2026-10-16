@@ -258,9 +258,10 @@ h1{font-size:20px;font-weight:650;line-height:1.35;overflow:hidden;text-overflow
 .scope-note{font-size:13px;color:var(--ink-3);flex:1;min-width:160px}
 .settings-layout{display:grid;grid-template-columns:180px minmax(0,1fr);flex:1;min-height:0}
 .settings-index{overflow:auto;padding:16px 8px 16px 16px;border-right:1px solid var(--line)}
-.settings-index button{display:flex;justify-content:space-between;width:100%;border:0;background:transparent;text-align:left;padding:6px 10px;border-radius:7px;color:var(--ink-2);font-size:13.5px}
+.settings-index button{display:grid;grid-template-columns:minmax(0,1fr) 3ch;align-items:center;gap:6px;width:100%;border:0;background:transparent;text-align:left;padding:6px 10px;border-radius:7px;color:var(--ink-2);font-size:13.5px}
+.settings-index-label{min-width:0;white-space:normal;overflow-wrap:anywhere;line-height:1.45}
 .settings-index button:hover{background:var(--hover);color:var(--ink)}
-.settings-index .count{background:transparent;color:var(--ink-3)}
+.settings-index .count{justify-self:end;min-width:3ch;text-align:right;white-space:nowrap;font-variant-numeric:tabular-nums;background:transparent;color:var(--ink-3)}
 .settings{overflow:auto;padding:4px 28px 40px}
 .setting-group{padding-top:20px}
 .setting-group>h3{font-size:16px;padding-bottom:2px}
