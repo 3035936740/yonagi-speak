@@ -118,7 +118,7 @@ h1{font-size:20px;font-weight:650;line-height:1.35;overflow:hidden;text-overflow
 .status-pill.ok{background:var(--ok-soft);color:var(--ok)}
 .status-pill.warn{background:var(--warn-soft);color:var(--warn)}
 .status-pill.bad{background:var(--bad-soft);color:var(--bad)}
-.group-actions{display:flex;gap:8px;flex-shrink:0}
+.group-actions{display:flex;gap:8px;flex-shrink:1;flex-wrap:wrap;justify-content:flex-end}
 .tabs{display:flex;gap:4px;padding:0 20px;border-bottom:1px solid var(--line);overflow-x:auto}
 .tabs button{position:relative;border:0;border-radius:0;background:transparent;padding:10px 12px 12px;color:var(--ink-2);font-size:14px}
 .tabs button:hover{background:transparent;color:var(--ink)}

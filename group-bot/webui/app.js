@@ -505,6 +505,8 @@ $('persona').oninput=()=>promptState('有未保存的修改',true);
 $('white-form').onsubmit=event=>{event.preventDefault();const id=$('white-id').value.trim();if(!/^\d+$/.test(id))return toast('请输入纯数字的群号',true);act({action:'whitelist',mode:'add',group_id:id},$('white-add')).then(()=>$('white-id').value='').catch(()=>{});};
 $('white-remove').onclick=()=>{if(confirm('把这个群移出白名单，并停止这个群的 Bot？'))act({action:'whitelist',mode:'remove',group_id:String(selected)},$('white-remove')).catch(()=>{});};
 $('pause').onclick=()=>act({action:'pause'},$('pause')).catch(()=>{});$('restart').onclick=()=>act({action:'restart'},$('restart')).catch(()=>{});
+$('reconnect-napcat').onclick=()=>act({action:'reconnect',mode:'napcat'},$('reconnect-napcat')).catch(()=>{});
+$('reconnect-mcp').onclick=()=>act({action:'reconnect',mode:'mcp'},$('reconnect-mcp')).catch(()=>{});
 
 function consoleLog(text){const out=$('command-output');out.textContent+=(out.textContent?'\n\n':'')+text;out.scrollTop=out.scrollHeight;}
 $('open-console').onclick=()=>{$('console-dialog').showModal();$('command').focus();};$('console-close').onclick=()=>$('console-dialog').close();

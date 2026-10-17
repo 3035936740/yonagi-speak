@@ -77,6 +77,7 @@ class Supervisor:
         self.root=Path(root);self.config=Config(root);self.children={};self.streams={};self.exited={}
         self.start=start;self.jobs={}
         self.paused=set()
+        self.retry_after={}
         self.closed=False
     def sync(self):
         if not self.start or self.closed:return
@@ -90,15 +91,18 @@ class Supervisor:
             if group in self.children:
                 if self.children[group].poll() is not None:
                     self.exited[group]=self.children[group].returncode
-                    if self.exited[group]==0:
-                        self.paused.add(group);self.stop_group(group)
+                    intentional=(runtime(self.root,group)/'STOP').exists()
+                    self.stop_group(group)
+                    if intentional:self.paused.add(group)
+                    else:self.retry_after[group]=time.monotonic()+5
                 continue
             if group in self.paused:continue
+            if time.monotonic()<self.retry_after.get(group,0):continue
             folder=runtime(self.root,group,cfg);new=not folder.exists();folder.mkdir(exist_ok=True)
             if new and (runtime(self.root,cfg['group_id'],cfg)/'NO_COOLDOWN').exists():(folder/'NO_COOLDOWN').touch()
             (folder/'STOP').unlink(missing_ok=True)
             state=read_json(folder/'state.json')
-            if state.get('online') and alive(state.get('pid')):continue
+            if alive(state.get('pid')):continue
             stream=(folder/'console-worker.log').open('ab',buffering=0)
             args=[sys.executable,'-X','utf8',str(self.root/'bot.py')]
             if group!=cfg['group_id']:args+=['--group-id',str(group)]
@@ -109,6 +113,10 @@ class Supervisor:
             except Exception:process.terminate();stream.close();job.close();raise
             self.jobs[group]=job
             self.children[group]=process;self.streams[group]=stream
+            self.retry_after.pop(group,None)
+            from console_config import atomic
+            if read_json(folder/'state.json').get('pid')!=process.pid:
+                atomic(folder/'state.json',{**state,'pid':process.pid,'online':False,'stopped':False,'waiting_for_qq':True,'error':''})
     def stop_group(self,group):
         folder=runtime(self.root,group);folder.mkdir(exist_ok=True);(folder/'STOP').touch()
         process=self.children.pop(group,None)
@@ -228,6 +236,9 @@ class Console:
                 self.execute('/whitelist '+mode+' '+gid)
             elif action=='delete':self.execute('/delete '+str(value.get('message_id','')))
             elif action=='restart':self.execute('/restart')
+            elif action=='reconnect':
+                from napcat_reconnect import reconnect
+                reconnect(self,str(value.get('mode','napcat')))
             elif action=='pause':
                 self.supervisor.paused.add(group);self.supervisor.stop_group(group);self.notice='当前群已暂停，记录已保存'
             elif action=='command':
@@ -306,6 +317,9 @@ class Console:
         parts=text.lstrip('/').split(maxsplit=1)
         if not parts:return
         command=unique(parts[0],COMMANDS);rest=parts[1] if len(parts)>1 else ''
+        if command=='reconnect':
+            from napcat_reconnect import reconnect
+            reconnect(self,rest.strip() or 'napcat');return
         if command=='usage':
             from account_usage import snapshot,format_text
             options=rest.split()
@@ -323,6 +337,7 @@ class Console:
         if command=='restart':
             self.notice='正在保存并重启当前群';self.draw();self.supervisor.stop_group(self.group)
             self.supervisor.paused.discard(self.group)
+            self.supervisor.retry_after.pop(self.group,None)
             self.supervisor.sync();self.notice='已重启当前群';return
         if command=='help':
             self.notice=help_text(rest);self.panel={'kind':'help','scroll':0};return

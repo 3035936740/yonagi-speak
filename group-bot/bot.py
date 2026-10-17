@@ -803,15 +803,21 @@ async def wait_for_qq(client, env, cfg):
         previous_state = {}
     while not (RUNTIME / 'STOP').exists() and settings()['enabled']:
         try:
+            current=settings()
+            if isinstance(env,dict):env.update({key:value for key,value in dotenv_values(current['mcp_env_file']).items() if value is not None})
             login = await api(client, env, 'get_login_info')
             if str(login.get('user_id')) != str(cfg.get('expected_self_id', '169901502')):
                 raise ValueError('Configured bot account is not logged in')
             group = await api(client, env, 'get_group_info', {'group_id': cfg['group_id']})
+            save_state({**{key:value for key,value in previous_state.items() if key not in {'error','connection_error'}},
+                'pid':os.getpid(),'online':True,'stopped':False,'waiting_for_qq':False,
+                'group_id':cfg['group_id'],'last_poll':datetime.now().isoformat()})
             return login, group
         except Exception as exc:
             log.warning('Waiting for bot QQ login: %s', type(exc).__name__)
             save_state({**previous_state, 'pid': os.getpid(), 'online': False,
                 'stopped': False, 'waiting_for_qq': True, 'group_id': cfg['group_id'],
+                'connection_error':type(exc).__name__,
                 'last_poll': datetime.now().isoformat()})
             await asyncio.sleep(10)
     return None
