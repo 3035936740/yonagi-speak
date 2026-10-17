@@ -1776,6 +1776,10 @@ async def _run(smoke=False):
             item={'sender':cfg['bot_name'],'text':request.get('display_text',request['text']),'is_bot':True,'_manual':True,
                 '_manual_request_id':request['id'],'_uid':str(self_id),'_id':request['message_id'],
                 '_time':request['sent_at'],'_audience':'direct','_group_id':cfg['group_id']}
+            if request.get('reply_id'):
+                item.update(_reply_id=request['reply_id'],_reply_to_uid=request['quote'].get('user_id',''),
+                    _quoted_message={'sender':request['quote']['sender'],'text':request['quote']['text']})
+            if request.get('at_ids'):item['_at_ids']=request['at_ids']
             if request.get('image_hashes'):
                 item.update(_image_count=len(request['image_hashes']),_image_hashes=request['image_hashes'],_media_sent=True)
                 image_memory.observe(item['_id'],item['_image_hashes'])
@@ -1787,8 +1791,9 @@ async def _run(smoke=False):
             if first:
                 reply_times.append(request['sent_at']);own_replies.append(item['text'])
                 debug_events.emit('sent',text=item['text'],sender=cfg['bot_name'],message_id=item['_id'],
-                    user_id=str(self_id),manual=True,request_id=request['id'],time=request['sent_at'],origin='manual',
-                    **({'image_count':item['_image_count'],'image_hashes':item['_image_hashes']} if item.get('_image_count') else {}))
+                    manual=True,request_id=request['id'],time=request['sent_at'],origin='manual',
+                    **debug_message_metadata(item,history),
+                    **({'image_hashes':item['_image_hashes']} if item.get('_image_count') else {}))
         known_excluded=blocked_accounts(RUNTIME)
         while not (RUNTIME / 'STOP').exists():
             cfg = settings()

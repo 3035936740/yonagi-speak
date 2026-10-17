@@ -51,7 +51,7 @@ const interventionStates={active:'生效中',expired:'已失效',cleared:'已清
 function interventionDelete(entry,group=selected){const button=node('button','删除','danger-text system-note-delete');button.type='button';button.disabled=!snapshot?.features?.includes('intervention_delete');button.title=button.disabled?'请重载Debug后台以启用删除':'删除后停止影响后续生成';button.onclick=async event=>{event.stopPropagation();try{await act({action:'system',mode:'delete',id:entry.id,group},button);if($('intervention-dialog').open)await loadInterventions();}catch{}};return button;}
 function systemRow(row){const item=node('div',undefined,'system-note'),head=node('div',undefined,'system-note-header'),entry=row.intervention||{};head.append(node('strong','系统干预'),node('span',interventionStates[entry.status]||entry.status||''),node('span',interventionModes[entry.mode]||''),node('span',eventTime(row)),interventionDelete(entry));item.append(head,node('div',row.text||'','system-note-text'));return item;}
 const composerDrafts={},manualPending=new Map(),manualDraftIDs=new Map(),composerResults=new Map(),composerBusy=new Set();
-const composerAttachments=new Map(),composerImageLoading=new Set();let composerUploadTarget=null;
+const composerAttachments=new Map(),composerImageLoading=new Set(),composerTargets=new Map();let composerUploadTarget=null;
 function composerKey(){return $('composer-role').value+':'+selected;}
 function attachmentsFor(key){return composerAttachments.get(key)||[];}
 function attachmentSignature(key){return attachmentsFor(key).map(image=>image.id).join(':');}
@@ -77,10 +77,64 @@ function renderAttachments(key,system,locked){
     card.append(preview,caption,remove);area.append(card);
   }
 }
+function targetsFor(key){return composerTargets.get(key)||{reply:null,mentions:[]};}
+function targetSignature(key){const data=targetsFor(key);return JSON.stringify([data.reply?.message_id||'',data.mentions.map(row=>row.id)]);}
+function manualLocked(key){return composerBusy.has(key)||composerImageLoading.has(key)||manualPending.has(Number(key.split(':')[1]));}
+function renderComposerTargets(key,system,locked){
+  const area=$('composer-targets'),data=targetsFor(key);area.hidden=system||(!data.reply&&!data.mentions.length);
+  const signature=key+targetSignature(key)+locked;if(area.dataset.signature===signature)return;area.dataset.signature=signature;area.replaceChildren();
+  const chip=(text,label,remove)=>{const box=node('span',undefined,'composer-target'),button=node('button','×');button.type='button';button.disabled=locked;button.setAttribute('aria-label',label);button.onclick=()=>{if(manualLocked(key))return;remove();renderComposer();};box.append(node('span',text),button);area.append(box);};
+  if(data.reply)chip('回复 '+data.reply.sender+'：'+data.reply.text,'取消回复',()=>composerTargets.set(key,{...data,reply:null}));
+  for(const member of data.mentions)chip('@'+member.name,'取消@'+member.name,()=>{
+    composerTargets.set(key,{...data,mentions:data.mentions.filter(row=>row.id!==member.id)});
+    const text=currentDraftText(key).replaceAll('[@'+member.id+']','');composerDrafts[key]={...composerDrafts[key],text};if($('composer-text').dataset.key===key)$('composer-text').value=text;
+  });
+}
+function prepareManualTarget(){
+  const key='bot:'+selected;if(manualLocked(key))throw Error('当前消息正在发送，请等待结果');
+  if(!snapshot.features?.includes('manual_targets'))throw Error('请 /stop 后重新启动后台以加载手动回复和@');
+  $('composer-role').value='bot';renderComposer();return key;
+}
+function selectManualReply(row){
+  try{const key=prepareManualTarget();composerTargets.set(key,{...targetsFor(key),reply:{message_id:String(row.message_id),sender:row.sender||snapshot.status.name||'群友',text:String(row.text||'[图片]').slice(0,180)}});renderComposer();$('composer-text').focus();}
+  catch(error){toast(error.message,true);}
+}
+function insertManualMention(member,target){
+  const key=target.key;if(manualLocked(key))throw Error('当前消息正在发送，请等待结果');
+  const data=targetsFor(key),id=String(member.id),existing=data.mentions.some(row=>row.id===id);
+  if(!existing&&data.mentions.length>=8)throw Error('最多@8位群友');
+  if(existing){toast('已添加这位群友');return;}
+  const text=currentDraftText(key),start=Math.min(target.start??text.length,text.length),end=Math.min(target.end??start,text.length),insert='[@'+id+'] ';
+  const next=text.slice(0,start)+insert+text.slice(end);if(next.length>2000)throw Error('文字和占位符合计最多2000字');
+  composerTargets.set(key,{...data,mentions:[...data.mentions,{id,name:member.name||id}]});composerDrafts[key]={...composerDrafts[key],text:next};
+  if($('composer-text').dataset.key===key){$('composer-text').value=next;$('composer-text').focus();$('composer-text').setSelectionRange(start+insert.length,start+insert.length);}renderComposer();
+}
+let mentionTarget=null,mentionSequence=0;
+async function loadMentionChoices(){
+  const ticket=++mentionSequence,target=mentionTarget;if(!target)return;
+  const area=$('mention-results'),query=$('mention-search').value.trim();area.replaceChildren(node('div','正在读取群友…','hint'));
+  try{
+    const data=await api('/api/members?'+new URLSearchParams({group:target.group,q:query}));if(ticket!==mentionSequence||!$('mention-dialog').open)return;
+    const choices=new Map();for(const member of data.members)choices.set(String(member.qq_id),{id:String(member.qq_id),name:member.card||member.nickname||String(member.qq_id),aliases:member.aliases||[]});
+    if(selected===target.group)for(const row of snapshot.events){const id=String(row.user_id||'');if(!/^[1-9]\d{4,14}$/.test(id)||choices.has(id))continue;const name=row.sender||id;if((name+' '+id).toLowerCase().includes(query.toLowerCase()))choices.set(id,{id,name,aliases:[]});}
+    area.replaceChildren();for(const member of choices.values()){
+      const button=node('button',undefined,'mention-choice');button.type='button';button.append(node('strong',member.name),node('span',member.id+(member.aliases.length?' · '+member.aliases.join(' / '):''),'hint'));
+      button.onclick=()=>{try{insertManualMention(member,target);$('mention-dialog').close();}catch(error){toast(error.message,true);}};area.append(button);
+    }
+    if(!choices.size)area.append(node('div','没有找到群友，请尝试 QQ 号或其他昵称','empty'));
+  }catch(error){if(ticket===mentionSequence)area.replaceChildren(node('div',error.message,'error'));}
+}
+function openMentionPicker(replaceAt=false){
+  try{const key=prepareManualTarget(),input=$('composer-text');mentionTarget={key,group:selected,start:Math.max(0,input.selectionStart-(replaceAt?1:0)),end:input.selectionEnd};$('mention-search').value='';$('mention-dialog').showModal();loadMentionChoices();$('mention-search').focus();}
+  catch(error){toast(error.message,true);}
+}
+$('composer-mention').onclick=()=>openMentionPicker();$('mention-search').oninput=()=>loadMentionChoices();$('mention-close').onclick=()=>$('mention-dialog').close();
+$('mention-dialog').addEventListener('close',()=>{mentionSequence++;mentionTarget=null;});
+$('composer-text').addEventListener('input',event=>{if($('composer-role').value==='bot'&&!event.isComposing&&event.inputType==='insertText'&&event.data==='@'){const input=event.target,at=input.selectionStart-1;if(at===0||/\s/.test(input.value[at-1]))openMentionPicker(true);}});
 function renderComposer(){
   if(!snapshot)return;const input=$('composer-text'),role=$('composer-role').value,key=composerKey(),previous=input.dataset.key;
   if(previous!==key){if(previous)composerDrafts[previous]={...composerDrafts[previous],text:input.value,scope:$('composer-scope').value,lifetime:$('composer-lifetime').value,minutes:$('composer-minutes').value};const draft=composerDrafts[key]||{};input.value=draft.text||'';$('composer-scope').value=draft.scope||'group';$('composer-lifetime').value=draft.lifetime||'context';$('composer-minutes').value=draft.minutes||'30';input.dataset.key=key;}
-  const system=role==='system',s=snapshot.status,images=attachmentsFor(key),locked=composerBusy.has(key)||composerImageLoading.has(key)||!system&&manualPending.has(selected);
+  const system=role==='system',s=snapshot.status,images=attachmentsFor(key),targets=targetsFor(key),hasTargets=Boolean(targets.reply||targets.mentions.length),locked=composerBusy.has(key)||composerImageLoading.has(key)||!system&&manualPending.has(selected);
   const ready=system?snapshot.features?.includes('system_interventions'):snapshot.features?.includes('manual_send')&&s.enabled&&s.online&&s.manual_send_ready;
   const imagesSupported=snapshot.features?.includes('manual_images');
   document.querySelectorAll('[data-system-option]').forEach(el=>el.hidden=!system);$('composer-minutes-row').hidden=!system||$('composer-lifetime').value!=='timed';
@@ -88,10 +142,11 @@ function renderComposer(){
   input.placeholder=(system?'输入系统提示词，不会立即触发回复':'以 '+s.name+' 的身份向当前群发送消息，可上传或粘贴图片，按 [图片1] 的位置发送')+'\nEnter 发送 · Shift+Enter 换行';
   $('composer-upload').hidden=system;$('composer-upload').disabled=Boolean(locked||!imagesSupported||images.length>=2);
   $('composer-upload').title=imagesSupported?'最多2张；单张≤5MB，合计≤8MB；支持PNG/JPEG/GIF/WebP':'请 /stop 后重新启动后台以加载图片上传';
-  renderAttachments(key,system,Boolean(locked));
+  renderAttachments(key,system,Boolean(locked));renderComposerTargets(key,system,Boolean(locked));
+  $('composer-mention').hidden=system;$('composer-mention').disabled=Boolean(locked||!snapshot.features?.includes('manual_targets'));
   $('composer-role').options[1].textContent=s.name+' 消息（发到群）';$('composer-send').textContent=system?'提交系统提示词':'发送 '+s.name+' 消息';
-  $('composer-send').disabled=!ready||(!input.value.trim()&&!images.length)||Boolean(locked)||(!system&&images.length>0&&!s.manual_images_ready);
-  $('composer-hint').textContent=system?'不立即回复；当前对话窗口 '+s.text_limit+' 字符。Enter 提交，Shift+Enter 换行':!ready?'先启动并加载支持手动发送的群后台':images.length&&!s.manual_images_ready?'图片发送需要新版群后台，请 /stop 后手动重启':'发送到本群 '+selected+'，文字和图片同条发送并加入记忆。最多2张，单张≤5MB，合计≤8MB。Enter 发送，Shift+Enter 换行';
+  $('composer-send').disabled=!ready||(!input.value.trim()&&!images.length&&!targets.mentions.length)||Boolean(locked)||(!system&&images.length>0&&!s.manual_images_ready)||(!system&&hasTargets&&!s.manual_targets_ready);
+  $('composer-hint').textContent=system?'不立即回复；当前对话窗口 '+s.text_limit+' 字符。Enter 提交，Shift+Enter 换行':!ready?'先启动并加载支持手动发送的群后台':hasTargets&&!s.manual_targets_ready?'回复和@需要新版群后台，请 /stop 后手动重启':images.length&&!s.manual_images_ready?'图片发送需要新版群后台，请 /stop 后手动重启':'发送到本群 '+selected+'，文字和图片同条发送并加入记忆。最多2张，单张≤5MB，合计≤8MB。Enter 发送，Shift+Enter 换行';
   const result=composerResults.get(key);$('composer-result').textContent=result?.text||'';$('composer-result').classList.toggle('error',Boolean(result?.error));
 }
 async function addComposerImages(files,target,plain=''){
@@ -129,8 +184,8 @@ async function checkManualSend(group){
       manualPending.delete(group);manualDraftIDs.delete('bot:'+group);
       if(row.status==='sent'){
         const key='bot:'+group;
-        if(currentDraftText(key)===pending.text&&attachmentSignature(key)===pending.attachments){
-          clearAttachments(key);composerDrafts[key]={text:''};if($('composer-text').dataset.key===key)$('composer-text').value='';
+        if(currentDraftText(key)===pending.text&&attachmentSignature(key)===pending.attachments&&targetSignature(key)===pending.targets){
+          clearAttachments(key);composerTargets.delete(key);composerDrafts[key]={text:''};if($('composer-text').dataset.key===key)$('composer-text').value='';
         }
         composerResult(group,'bot','已发送，消息 ID '+row.message_id+'；图文已加入上下文与手动消息记忆');
       }else composerResult(group,'bot',row.error||'未发送，请检查后台',true);
@@ -147,19 +202,19 @@ $('composer-text').addEventListener('paste',async event=>{
 });
 $('composer-text').onkeydown=event=>{if(event.key==='Enter'&&!event.shiftKey&&!event.altKey&&!event.metaKey&&!event.isComposing&&event.keyCode!==229){event.preventDefault();if(!$('composer-send').disabled)$('composer').requestSubmit();}};
 $('composer').onsubmit=async event=>{
-  event.preventDefault();const group=selected,role=$('composer-role').value,text=$('composer-text').value,key=composerKey(),images=attachmentsFor(key),attachmentIDs=attachmentSignature(key);
-  if((!text.trim()&&!images.length)||composerBusy.has(key)||composerImageLoading.has(key)||role==='bot'&&manualPending.has(group))return;
+  event.preventDefault();const group=selected,role=$('composer-role').value,text=$('composer-text').value,key=composerKey(),images=attachmentsFor(key),attachmentIDs=attachmentSignature(key),targets=targetsFor(key),targetIDs=targetSignature(key);
+  if((!text.trim()&&!images.length&&!targets.mentions.length)||composerBusy.has(key)||composerImageLoading.has(key)||role==='bot'&&manualPending.has(group))return;
   composerBusy.add(key);renderComposer();
   try{
     if(role==='system'){
       await act({action:'system',mode:'add',group,text,target_scope:$('composer-scope').value,lifetime:$('composer-lifetime').value,minutes:Number($('composer-minutes').value)},$('composer-send'));
       composerDrafts[key]={text:''};if($('composer-text').dataset.key===key&&$('composer-text').value===text)$('composer-text').value='';composerResult(group,role,'系统提示词已保存，不触发立即回复');
     }else{
-      const fingerprint=JSON.stringify([text,attachmentIDs]);let request=manualDraftIDs.get(key);
+      const fingerprint=JSON.stringify([text,attachmentIDs,targetIDs]);let request=manualDraftIDs.get(key);
       if(!request||request.fingerprint!==fingerprint){request={id:crypto.randomUUID().replaceAll('-',''),fingerprint};manualDraftIDs.set(key,request);}
       const payload=await Promise.all(images.map(imagePayload));
-      const data=await act({action:'manual_send',group,text,images:payload,request_id:request.id},$('composer-send'));
-      manualPending.set(group,{id:data.request.id,text,attachments:attachmentIDs});composerResult(group,role,'手动图文消息已排队，等待群后台发送');await checkManualSend(group);
+      const data=await act({action:'manual_send',group,text,images:payload,reply_id:targets.reply?.message_id||'',at_ids:targets.mentions.map(row=>row.id),request_id:request.id},$('composer-send'));
+      manualPending.set(group,{id:data.request.id,text,attachments:attachmentIDs,targets:targetIDs});composerResult(group,role,'手动图文消息已排队，等待群后台发送');await checkManualSend(group);
     }
   }catch(error){composerResult(group,role,error.message,true);}finally{composerBusy.delete(key);renderComposer();}
 };
@@ -310,11 +365,16 @@ function messageRow(row){
   item.updateRecord=latest=>{row=latest;pictures=latest.image_info||[];};
   const avatar=avatarNode('user',row.user_id,name,'avatar');
   if(/^[1-9]\d{4,14}$/.test(String(row.user_id||''))){avatar.classList.add('member-avatar-button');avatar.setAttribute('role','button');avatar.tabIndex=0;avatar.setAttribute('aria-label','查看并标记群友 '+name);const open=event=>{event.stopPropagation();openMember(row.user_id,name).catch(error=>toast(error.message,true));};avatar.onclick=open;avatar.onkeydown=event=>{if(event.key==='Enter'||event.key===' '){event.preventDefault();open(event);}};}
+  if(/^-?\d+$/.test(String(row.message_id||''))){
+    const tools=node('div',undefined,'msg-manual-actions'),reply=node('button','回复');reply.type='button';reply.onclick=event=>{event.stopPropagation();selectManualReply(row);};tools.append(reply);
+    if(/^[1-9]\d{4,14}$/.test(String(row.user_id||''))){const mention=node('button','@');mention.type='button';mention.setAttribute('aria-label','@'+name);mention.onclick=event=>{event.stopPropagation();try{const key=prepareManualTarget();insertManualMention({id:row.user_id,name},{key});}catch(error){toast(error.message,true);}};tools.append(mention);}body.append(tools);
+  }
   item.append(avatar,body);return item;
 }
 function flowRow(row){const item=node('div',undefined,'flow '+row.kind);item.title=eventSummary(row);item.append(node('span',eventTime(row),'flow-time'),node('span',(labels[row.kind]||row.kind)+(row.role?' · '+row.role:''),'kind-chip '+levelClass(row)),node('span',eventSummary(row)||'—','flow-text'));return item;}
 function jsonView(target,value){target.replaceChildren();const json=JSON.stringify(value,null,2),regex=/("(?:\\.|[^"\\])*"\s*:?)|\b(true|false|null)\b|(-?\d+(?:\.\d+)?(?:e[+-]?\d+)?)/gi;let offset=0;for(const match of json.matchAll(regex)){target.append(document.createTextNode(json.slice(offset,match.index)));target.append(node('span',match[0],match[1]?(match[0].endsWith(':')?'json-key':'json-string'):match[2]?'json-literal':'json-number'));offset=match.index+match[0].length;}target.append(document.createTextNode(json.slice(offset)));}
-function renderDetail(row){$('detail').hidden=!row;$('detail-empty').hidden=Boolean(row);document.querySelector('.chat-layout').classList.toggle('has-detail',Boolean(row));if(!row)return;$('detail-type').textContent=(labels[row.kind]||row.kind)+(row.role?' · '+row.role:'');$('detail-type').className='kind-chip '+levelClass(row);const props=[['时间',(eventDate(row)+' '+eventTime(row)).trim(),false],['发送者',row.kind==='sent'?(snapshot.status.name||'Bot'):(row.sender||'—'),false],['消息 ID',row.message_id||'—',true],['上下文 ID',contextID(row),true],['引用原 ID',row.reply_id||'—',true],['日志级别',row.level||'INFO',true],['来源',row.historical?'历史恢复':'实时记录',false]];$('detail-properties').replaceChildren();for(const [label,value,code] of props)$('detail-properties').append(node('dt',label),node('dd',String(value),code?'code':''));$('detail-content').textContent=row.text||'（没有文字内容）';renderQuote(row);renderImages(row);jsonView($('detail-json'),row);const valid=['received','sent'].includes(row.kind)&&/^-?\d+$/.test(row.message_id||'');$('delete-event').hidden=!valid;$('copy-id').disabled=contextID(row)==='—';$('copy-id').onclick=async()=>{try{await navigator.clipboard.writeText(contextID(row));toast('已复制 ID：'+contextID(row));}catch{toast('浏览器不允许复制，请在“原始数据”里手动选中 ID',true);}};$('delete-event').onclick=()=>{if(confirm('删除这条本地记录和 Bot 上下文？\nQQ 里的原消息不会撤回；当前群会短暂停止后自动恢复。'))act({action:'delete',message_id:row.message_id},$('delete-event')).catch(()=>{});};}
+function renderDetail(row){$('detail').hidden=!row;$('detail-empty').hidden=Boolean(row);document.querySelector('.chat-layout').classList.toggle('has-detail',Boolean(row));if(!row)return;$('detail-type').textContent=(labels[row.kind]||row.kind)+(row.role?' · '+row.role:'');$('detail-type').className='kind-chip '+levelClass(row);const props=[['时间',(eventDate(row)+' '+eventTime(row)).trim(),false],['发送者',row.kind==='sent'?(snapshot.status.name||'Bot'):(row.sender||'—'),false],['消息 ID',row.message_id||'—',true],['上下文 ID',contextID(row),true],['引用原 ID',row.reply_id||'—',true],['日志级别',row.level||'INFO',true],['来源',row.historical?'历史恢复':'实时记录',false]];$('detail-properties').replaceChildren();for(const [label,value,code] of props)$('detail-properties').append(node('dt',label),node('dd',String(value),code?'code':''));$('detail-content').textContent=row.text||'（没有文字内容）';renderQuote(row);renderImages(row);jsonView($('detail-json'),row);const valid=['received','sent'].includes(row.kind)&&/^-?\d+$/.test(row.message_id||'');$('delete-event').hidden=!valid;$('detail-reply').hidden=!valid;$('detail-mention').hidden=!valid||!/^[1-9]\d{4,14}$/.test(String(row.user_id||''));
+$('detail-reply').onclick=()=>selectManualReply(row);$('detail-mention').onclick=()=>{try{const key=prepareManualTarget();insertManualMention({id:row.user_id,name:row.sender||row.user_id},{key});}catch(error){toast(error.message,true);}};$('copy-id').disabled=contextID(row)==='—';$('copy-id').onclick=async()=>{try{await navigator.clipboard.writeText(contextID(row));toast('已复制 ID：'+contextID(row));}catch{toast('浏览器不允许复制，请在“原始数据”里手动选中 ID',true);}};$('delete-event').onclick=()=>{if(confirm('删除这条本地记录和 Bot 上下文？\nQQ 里的原消息不会撤回；当前群会短暂停止后自动恢复。'))act({action:'delete',message_id:row.message_id},$('delete-event')).catch(()=>{});};}
 function closeDetail(){selectedEvent=null;document.querySelectorAll('#records [role=option]').forEach(item=>{item.classList.remove('selected');item.setAttribute('aria-selected','false');});renderDetail(null);}
 $('detail-close').onclick=closeDetail;
 
@@ -474,7 +534,10 @@ $('store-close').onclick=()=>{$('store-editor').close();editorSave=null;};$('sto
 $('db-table').onchange=()=>{dbOffset=0;loadDatabase().catch(error=>toast(error.message,true));};$('db-refresh').onclick=()=>loadDatabase().catch(error=>toast(error.message,true));$('db-search').oninput=()=>{dbOffset=0;loadDatabase().catch(error=>toast(error.message,true));};$('db-add').onclick=()=>openDatabaseEditor(null);$('db-prev').onclick=()=>{dbOffset=Math.max(0,dbOffset-50);loadDatabase();};$('db-next').onclick=()=>{dbOffset+=50;loadDatabase();};
 
 const stickerStates={approved:'已入库',pending:'待审核',rejected:'未通过',unreviewed:'未审核'};
-async function loadStickers(){const ticket=++stickerSequence;const data=await api('/api/stickers?'+new URLSearchParams({q:$('sticker-search').value,offset:stickerOffset}));if(ticket!==stickerSequence)return;if(data.offset>0&&data.offset>=data.total){stickerOffset=Math.max(0,Math.floor((data.total-1)/data.limit))*data.limit;return loadStickers();}stickerData=data;updatePager('sticker',data);for(const url of imageURLs)URL.revokeObjectURL(url);imageURLs.length=0;const area=$('sticker-records');area.replaceChildren();for(const row of data.rows){const card=node('article',undefined,'sticker-entry'),preview=node('div',undefined,'sticker-preview');if((row.kind==='sticker'&&row.state==='approved')||row.state==='pending'){const img=node('img');img.alt=row.title;img.loading='lazy';preview.append(img);fetch('/api/sticker-image?'+new URLSearchParams({id:row.id}),{headers:{'X-QQ-Debug-Key':token}}).then(async response=>{if(!response.ok)throw Error('图片不可用');const blob=await response.blob();if(ticket!==stickerSequence)return;const url=URL.createObjectURL(blob);imageURLs.push(url);img.src=url;}).catch(()=>{preview.replaceChildren(node('span','图片文件丢失','hint'));});}else preview.append(node('div',row.kind==='market_face'?row.title:row.state==='rejected'?'审核未通过，原图没有保存':'需要重新审核','market-name'));const meta=node('div',undefined,'sticker-meta');meta.append(node('span',stickerStates[row.state]||row.state,'sticker-state '+row.state),document.createTextNode((row.kind==='market_face'?'QQ 商城表情':row.emotion||row.asset_type||'图片')+' · 用过 '+(row.uses||0)+' 次'));card.append(preview,node('div',row.title,'sticker-title'),meta);if(row.use_when)card.append(node('div','适合：'+row.use_when,'sticker-meta'));const code=node('div',row.id,'key');code.title=row.content_hash||row.id;card.append(code);const tools=node('div',undefined,'sticker-tools');if((row.kind==='sticker'&&row.state==='approved')||row.state==='pending'){const view=node('button','查看原图');view.type='button';view.onclick=async()=>{try{const url=await imageURL('/api/sticker-image?'+new URLSearchParams({id:row.id}));imageURLs.push(url);showOriginal(url,row.title);}catch(error){toast(error.message,true);}};tools.append(view);}if(['sticker','market_face'].includes(row.kind)){const edit=node('button','编辑');edit.type='button';edit.onclick=()=>openStickerEditor(row);tools.append(edit);}if(row.state!=='rejected'){const remove=node('button',row.state==='pending'?'取消收录':'删除','danger-text');remove.type='button';remove.onclick=async()=>{if(!confirm('从共享表情库删除这一项？所有授权群都会同步生效。'))return;try{await act({action:'sticker',mode:'delete',id:row.id},remove);await loadStickers();}catch{}};tools.append(remove);}card.append(tools);area.append(card);}if(!data.rows.length)area.append(node('div',$('sticker-search').value?'没有匹配的表情':'表情库还是空的。Bot 会自动收录群里反复出现的表情，也可以点右上角上传','empty'));$('sticker-count').textContent='共 '+data.total+' 项 · 第 '+(Math.floor(data.offset/24)+1)+' / '+Math.max(1,Math.ceil(data.total/24))+' 页';$('sticker-prev').disabled=!data.offset;$('sticker-next').disabled=data.offset+data.rows.length>=data.total;}
+async function loadStickers(){const ticket=++stickerSequence;const data=await api('/api/stickers?'+new URLSearchParams({q:$('sticker-search').value,offset:stickerOffset,state:$('sticker-state').value,kind:$('sticker-kind').value,emotion:$('sticker-emotion').value}));if(ticket!==stickerSequence)return;if(data.offset>0&&data.offset>=data.total){stickerOffset=Math.max(0,Math.floor((data.total-1)/data.limit))*data.limit;return loadStickers();}stickerData=data;updatePager('sticker',data);
+const emotions=$('sticker-emotion'),emotionSignature=JSON.stringify(data.emotions||[]);
+if(emotions.dataset.options!==emotionSignature){const value=emotions.value;emotions.replaceChildren(new Option('全部',''),...(data.emotions||[]).map(value=>new Option(value,value)));emotions.value=value;emotions.dataset.options=emotionSignature;}
+for(const url of imageURLs)URL.revokeObjectURL(url);imageURLs.length=0;const area=$('sticker-records');area.replaceChildren();for(const row of data.rows){const card=node('article',undefined,'sticker-entry'),preview=node('div',undefined,'sticker-preview');if((row.kind==='sticker'&&row.state==='approved')||row.state==='pending'){const img=node('img');img.alt=row.title;img.loading='lazy';preview.append(img);fetch('/api/sticker-image?'+new URLSearchParams({id:row.id}),{headers:{'X-QQ-Debug-Key':token}}).then(async response=>{if(!response.ok)throw Error('图片不可用');const blob=await response.blob();if(ticket!==stickerSequence)return;const url=URL.createObjectURL(blob);imageURLs.push(url);img.src=url;}).catch(()=>{preview.replaceChildren(node('span','图片文件丢失','hint'));});}else preview.append(node('div',row.kind==='market_face'?row.title:row.state==='rejected'?'审核未通过，原图没有保存':'需要重新审核','market-name'));const meta=node('div',undefined,'sticker-meta');meta.append(node('span',stickerStates[row.state]||row.state,'sticker-state '+row.state),document.createTextNode((row.kind==='market_face'?'QQ 商城表情':row.emotion||row.asset_type||'图片')+' · 用过 '+(row.uses||0)+' 次'));card.append(preview,node('div',row.title,'sticker-title'),meta);if(row.use_when)card.append(node('div','适合：'+row.use_when,'sticker-meta'));const code=node('div',row.id,'key');code.title=row.content_hash||row.id;card.append(code);const tools=node('div',undefined,'sticker-tools');if((row.kind==='sticker'&&row.state==='approved')||row.state==='pending'){const view=node('button','查看原图');view.type='button';view.onclick=async()=>{try{const url=await imageURL('/api/sticker-image?'+new URLSearchParams({id:row.id}));imageURLs.push(url);showOriginal(url,row.title);}catch(error){toast(error.message,true);}};tools.append(view);}if(['sticker','market_face'].includes(row.kind)){const edit=node('button','编辑');edit.type='button';edit.onclick=()=>openStickerEditor(row);tools.append(edit);}if(row.state!=='rejected'){const remove=node('button',row.state==='pending'?'取消收录':'删除','danger-text');remove.type='button';remove.onclick=async()=>{if(!confirm('从共享表情库删除这一项？所有授权群都会同步生效。'))return;try{await act({action:'sticker',mode:'delete',id:row.id},remove);await loadStickers();}catch{}};tools.append(remove);}card.append(tools);area.append(card);}if(!data.rows.length)area.append(node('div',($('sticker-search').value||$('sticker-state').value!=='all'||$('sticker-kind').value!=='all'||$('sticker-emotion').value)?'没有符合筛选条件的表情':'表情库还是空的。Bot 会自动收录群里反复出现的表情，也可以点右上角上传','empty'));$('sticker-count').textContent='共 '+data.total+' 项 · 第 '+(Math.floor(data.offset/24)+1)+' / '+Math.max(1,Math.ceil(data.total/24))+' 页';$('sticker-prev').disabled=!data.offset;$('sticker-next').disabled=data.offset+data.rows.length>=data.total;}
 
 function openStickerEditor(row){const fields=row.kind==='market_face'?[{name:'emotion',label:'情绪分类',value:row.emotion||'其他',options:stickerData.emotions},{name:'use_when',label:'适用场景',value:row.use_when},{name:'package_name',label:'QQ 表情包名称',value:row.package_name,placeholder:'QQ 没有提供名称，可以手动补写'},{name:'emoji_name',label:'单个表情名称',value:row.emoji_name},{name:'label',label:'显示说明',value:row.label}]:[{name:'label',label:'显示名称',value:row.label},{name:'description',label:'图片说明',value:row.description},{name:'emotion',label:'情绪分类',value:row.emotion||'其他',options:stickerData.emotions},{name:'use_when',label:'适用场景',value:row.use_when}];openEditor('编辑表情',fields,async inputs=>{const values=Object.fromEntries(fields.map(field=>[field.name,inputs[field.name].value]));await act({action:'sticker',mode:'update',id:row.id,values},$('store-save'));await loadStickers();},'只修改名称和用途，审核结果和 QQ 原始发送信息保持不变');}
 $('sticker-add').onclick=()=>{if(!snapshot?.features?.includes('image_management'))return toast('请 /exit 或 /stop 后重新启动 Debug 加载人工收录',true);const group=selected;const fields=[{name:'file',label:'图片文件（≤2MB）',file:true},...stickerFields(),{name:'admission',label:'收录方式',value:'人工确认直接入库',options:['人工确认直接入库','交给自动审核']}];const inputs=openEditor('手动录入表情包',fields,async inputs=>{const file=inputs.file.files[0];if(!file)throw Error('请选择图片');if(file.size>2*1024*1024)throw Error('图片上限2MB');const encoded=await new Promise((resolve,reject)=>{const reader=new FileReader();reader.onload=()=>resolve(String(reader.result).split(',')[1]);reader.onerror=reject;reader.readAsDataURL(file);});const values=Object.fromEntries(['label','description','emotion','use_when'].map(key=>[key,inputs[key].value]));values.image_base64=encoded;values.admission=inputs.admission.value==='人工确认直接入库'?'manual':'review';await act({action:'sticker',mode:'create',values},$('store-save'));await loadStickers();},'人工确认会直接加入共享表情库并保留原图；选择自动审核时，通过后才可发送。');enablePrefill(inputs,{group,token:()=>inputs.file.files[0],prepare:async()=>({source:'upload',image_base64:await encodeStickerFile(inputs.file.files[0])})});};
@@ -487,3 +550,5 @@ setInterval(()=>{if(closed||document.hidden||document.querySelector('dialog[open
 function showBackendVersion(ready){let banner=$('backend-version');if(!banner){banner=node('div',undefined,'backend-version');banner.id='backend-version';banner.setAttribute('role','status');document.body.append(banner);}banner.hidden=ready;if(!ready)banner.textContent='网页文件已经更新，但调试服务还是旧进程：请在 CLI 输入 /exit，然后重新打开 Start-QQ-Group-Bot-Debug。';document.querySelectorAll('.side-nav [data-view],[data-context-tabs] button').forEach(button=>button.disabled=!ready&&(button.dataset.view||button.dataset.tab)!=='logs');}
 
 window.addEventListener('pagehide',()=>{for(const url of originalURLs.values())URL.revokeObjectURL(url);originalURLs.clear();});
+
+for(const id of ['sticker-state','sticker-kind','sticker-emotion'])$(id).onchange=()=>{stickerOffset=0;loadStickers().catch(error=>toast(error.message,true));};

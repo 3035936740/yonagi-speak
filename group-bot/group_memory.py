@@ -91,8 +91,11 @@ class GroupMemory:
     def record_manual(self,item,request_id):
         """Store explicit bot speech separately from facts learned about people."""
         if not item.get('is_bot') or not item.get('_id'):raise ValueError('手动消息必须是已发送的Bot消息')
+        text=item.get('text','');quote=item.get('_quoted_message')
+        if item.get('_reply_id') and isinstance(quote,dict):
+            text='[回复 '+str(quote.get('sender',''))[:80]+'：'+str(quote.get('text',''))[:180]+'] '+text
         self.db.execute('INSERT OR IGNORE INTO manual_messages VALUES (?,?,?,?,?,?)',
-            (str(item['_id']),request_id,item.get('sender',''),str(item.get('_uid','')),item.get('text',''),item.get('_time',time.time())))
+            (str(item['_id']),request_id,item.get('sender',''),str(item.get('_uid','')),text,item.get('_time',time.time())))
         self.db.commit()
 
     def prune(self):

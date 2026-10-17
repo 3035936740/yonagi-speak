@@ -45,6 +45,41 @@ class WebUITests(unittest.TestCase):
         self.assertEqual(result['groups'][1]['name'],'音游群')
         self.assertEqual(len(result['events']),1);self.assertEqual(result['events'][0]['kind'],'sent')
         self.assertEqual(self.client.get('/api/snapshot?group=300',headers=self.headers).status_code,400)
+
+    def test_sticker_filters_combine_before_pagination(self):
+        from debug_store import library
+        from sticker_filter import FILTER_VERSION
+        lib=library(self.root)
+        with lib.transaction():
+            for n in range(30):
+                key='s'+format(n,'016x')
+                lib.items[key]={'kind':'sticker','label':'猫猫'+str(n),'emotion':'开心' if n%2 else '难过',
+                    'filter_version':FILTER_VERSION,'asset_type':'sticker','sticker_confidence':.95,'time':n}
+            lib.items['m'+'a'*16]={'kind':'market_face','package_name':'猫猫','emoji_name':'挥手','time':40}
+            lib.items['s'+'b'*16]={'kind':'sticker','label':'旧图','time':41}
+            lib.rejected['s'+'c'*16]={'asset_type':'photo','time':42};lib.save()
+        (lib.root/'incoming').mkdir(exist_ok=True)
+        atomic(lib.root/'incoming'/('u'+'d'*16+'.json'),{'label':'人工上传','time':43})
+        def get(**params):
+            response=self.client.get('/api/stickers',params=params,headers=self.headers)
+            self.assertEqual(response.status_code,200,response.text);return response.json()
+        self.assertEqual(get()['total'],34)
+        page=get(state='approved',kind='image');self.assertEqual(page['total'],30);self.assertEqual(len(page['rows']),24)
+        tail=get(state='approved',kind='image',offset=24);self.assertEqual(tail['total'],30);self.assertEqual(len(tail['rows']),6)
+        self.assertFalse({row['id'] for row in page['rows']}&{row['id'] for row in tail['rows']})
+        happy=get(state='approved',kind='image',emotion='开心',q='猫猫');self.assertEqual(happy['total'],15)
+        self.assertTrue(all(row['emotion']=='开心' for row in happy['rows']))
+        self.assertEqual(get(state='approved',kind='market_face')['total'],1)
+        self.assertEqual(get(state='rejected',kind='image')['total'],1)
+        self.assertEqual(get(state='pending',kind='image')['total'],1)
+        self.assertEqual(get(state='unreviewed',kind='image')['total'],1)
+        self.assertEqual(get(state='rejected',kind='market_face')['total'],0)
+        self.assertEqual(get(q='找不到')['total'],0)
+
+    def test_sticker_filters_require_auth_and_reject_unknown_values(self):
+        self.assertEqual(self.client.get('/api/stickers?state=approved').status_code,401)
+        for params in [{'state':'missing'},{'kind':'missing'},{'emotion':'missing'}]:
+            self.assertEqual(self.client.get('/api/stickers',params=params,headers=self.headers).status_code,400)
     def test_config_excludes_paths_and_preserves_actual_persona(self):
         result=self.client.get('/api/config',headers=self.headers).json()
         self.assertNotIn('mcp_env_file',result['config']);self.assertNotIn('codex_exe',result['config'])

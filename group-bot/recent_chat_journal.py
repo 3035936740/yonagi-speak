@@ -6,7 +6,7 @@ import time
 
 
 FIELDS = ('sender', 'text', 'at_bot', 'is_bot', '_time', '_uid', '_id',
-    '_at_ids', '_reply_id', '_audience', '_reply_to_uid', '_media_sent', '_group_id', '_nickname', '_card', '_image_hashes','_manual','_manual_request_id','_image_count','_sticker_ids')
+    '_at_ids', '_reply_id', '_audience', '_reply_to_uid', '_media_sent', '_group_id', '_nickname', '_card', '_image_hashes','_manual','_manual_request_id','_image_count','_sticker_ids','_quoted_message')
 
 
 def compact(item):
@@ -32,6 +32,10 @@ def compact(item):
         saved['_reply_id'] = str(saved['_reply_id'])[:80]
     if '_at_ids' in saved:
         saved['_at_ids'] = [str(value)[:40] for value in saved['_at_ids'][:8]]
+    if '_quoted_message' in saved:
+        source=saved['_quoted_message']
+        if isinstance(source,dict):saved['_quoted_message']={key:str(source.get(key,''))[:180 if key=='text' else 80] for key in ('sender','text')}
+        else:saved.pop('_quoted_message')
     if '_sticker_ids' in saved:
         saved['_sticker_ids']=[str(value)[:80] for value in saved['_sticker_ids'][:5]]
     return saved

@@ -9,7 +9,8 @@ import uuid
 
 from console_config import Config,pid_alive,read_json,runtime
 from storage_io import atomic_write_text
-from manual_images import decode_images,save_images,plan,segments,archive_images,display_text,remove_upload_copies
+from manual_images import decode_images,save_images,plan,segments,archive_images,display_text,remove_upload_copies,content_plan
+from manual_targets import validate as validate_targets,resolve as resolve_targets
 
 
 class ManualOutbox:
@@ -30,7 +31,7 @@ class ManualOutbox:
 
     def mark_ready(self,pid):
         self.folder.parent.mkdir(parents=True,exist_ok=True)
-        atomic_write_text(self.folder.parent/'manual-worker.json',json.dumps({'pid':pid,'version':2}))
+        atomic_write_text(self.folder.parent/'manual-worker.json',json.dumps({'pid':pid,'version':3}))
 
     @contextmanager
     def lock(self):
@@ -45,10 +46,12 @@ class ManualOutbox:
             try:yield
             finally:stream.seek(0);msvcrt.locking(stream.fileno(),msvcrt.LK_UNLCK,1)
 
-    def enqueue(self,text,identity=None,images=None):
+    def enqueue(self,text,identity=None,images=None,reply_id=None,at_ids=None):
+        reply_id,at_ids=validate_targets(reply_id,at_ids)
         images=decode_images(images)
-        if not isinstance(text,str) or len(text)>2000 or not text.strip() and not images:raise ValueError('手动消息需有文字或图片，文字最多2000字符')
+        if not isinstance(text,str) or len(text)>2000 or not text.strip() and not images and not at_ids:raise ValueError('手动消息需有文字、图片或@，文字最多2000字符')
         plan(text,images)
+        content_plan({'text':text,'images':images,'at_ids':at_ids})
         identity=str(identity or uuid.uuid4().hex).replace('-','')
         if not re.fullmatch(r'[a-f0-9]{32}',identity):raise ValueError('无效发送请求ID')
         cfg=Config(self.root,self.group).load();state=read_json(runtime(self.root,self.group)/'state.json')
@@ -56,16 +59,18 @@ class ManualOutbox:
             if (self.folder/(identity+'.json')).exists():
                 old=self.get(identity)
                 signature=lambda rows:[(row['slot'],row['digest']) for row in rows]
-                if old['text']!=text or signature(old.get('images',[]))!=signature(images):raise ValueError('同一发送请求不能替换内容')
+                if old['text']!=text or signature(old.get('images',[]))!=signature(images) or old.get('reply_id','')!=reply_id or old.get('at_ids',[])!=at_ids:raise ValueError('同一发送请求不能替换内容')
                 return old
             if not cfg['enabled'] or not state.get('online') or state.get('stopped') or not pid_alive(state.get('pid')):
                 raise ValueError('群后台尚未运行或QQ未连接，请先启动该群后台')
             if read_json(self.folder.parent/'manual-worker.json').get('pid')!=state.get('pid'):
                 raise ValueError('当前群后台尚未加载手动发送功能，请 /exit 后手动启动 Debug')
             if images and read_json(self.folder.parent/'manual-worker.json').get('version',1)<2:raise ValueError('当前群后台尚未加载图片发送，请 /stop 后手动重启')
+            if (reply_id or at_ids) and read_json(self.folder.parent/'manual-worker.json').get('version',1)<3:raise ValueError('当前群后台尚未加载手动回复和@，请 /stop 后手动重启')
             pending=sum(read_json(path).get('status') in {'queued','sending','record_pending'} for path in self.folder.glob('*.json'))
             if pending>=10:raise ValueError('该群待发送手动消息已达10条，请等待处理')
             row={'id':identity,'group_id':self.group,'text':text,'created':time.time(),'status':'queued'}
+            if reply_id or at_ids:row.update(resolve_targets(self.root,self.group,reply_id,at_ids))
             if images:row['images']=save_images(self.folder,identity,images)
             self.write(row);return row
 
@@ -99,7 +104,7 @@ class ManualOutbox:
             try:
                 if row.get('images'):
                     row['image_hashes']=archive_images(self.folder,row)
-                    row['display_text']=display_text(row)
+                row['display_text']=display_text(row)
                 record(row)
             except Exception as error:
                 row.update(status='record_pending',error='QQ已发送，本地记录待补写：'+type(error).__name__)

@@ -174,7 +174,10 @@ def approve_image(lib, path, values):
     return {'ok':True, 'message':'已人工确认加入共享表情库，所有授权群可使用', 'id':key}
 
 
-def sticker_view(root,query='',offset=0):
+def sticker_view(root,query='',offset=0,state='all',kind='all',emotion=''):
+    if state not in {'all','approved','rejected','pending','unreviewed'}:raise ValueError('未知审核状态')
+    if kind not in {'all','market_face','image'}:raise ValueError('未知表情类型')
+    if emotion and emotion not in EMOTIONS:raise ValueError('未知情绪分类')
     lib=library(root);rows=[]
     for key,item in lib.items.items():
         market=item.get('kind')=='market_face';name=str(item.get('emoji_name') or item.get('label') or item.get('data',{}).get('summary') or '未命名').strip('[]')
@@ -195,7 +198,11 @@ def sticker_view(root,query='',offset=0):
         except (ValueError,OSError):continue
         rows.append({'id':path.stem,'kind':'pending','title':str(meta.get('label') or '待审核图片')[:80],'state':'pending','time':meta.get('time',0)})
     rows=sorted(rows,key=lambda item:item.get('time',0),reverse=True)
-    filtered=[row for row in rows if str(query).lower() in json.dumps(row,ensure_ascii=False).lower()]
+    filtered=[row for row in rows
+        if (state=='all' or row['state']==state)
+        and (kind=='all' or (row['kind']=='market_face' if kind=='market_face' else row['kind']!='market_face'))
+        and (not emotion or row.get('emotion')==emotion)
+        and str(query).lower() in json.dumps(row,ensure_ascii=False).lower()]
     offset=max(0,int(offset));return {'rows':filtered[offset:offset+24],'total':len(filtered),'offset':offset,'limit':24,'emotions':EMOTIONS}
 
 

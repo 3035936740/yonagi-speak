@@ -37,7 +37,9 @@
             <label data-system-option>有效期<select id="composer-lifetime"><option value="context">当前对话窗口</option><option value="once">下一次自然回复</option><option value="timed">定时失效</option><option value="persistent">手动清除</option></select></label>
             <label id="composer-minutes-row" hidden>分钟<input id="composer-minutes" type="number" min="1" max="10080" value="30"></label>
             <button id="composer-upload" type="button" hidden>上传图片</button><input id="composer-files" type="file" accept="image/png,image/jpeg,image/gif,image/webp" multiple hidden>
+            <button id="composer-mention" type="button" hidden>@ 群友</button>
           </div>
+          <div id="composer-targets" class="composer-targets" aria-label="待发送引用和@" hidden></div>
           <textarea id="composer-text" rows="2" maxlength="1500" placeholder="输入系统提示词，不会立即触发回复" aria-label="发送内容"></textarea>
           <div id="composer-attachments" class="composer-attachments" aria-label="待发送图片" hidden></div>
           <div class="composer-bottom"><span id="composer-hint" class="hint">系统指令仅供后续回复使用；Enter 提交，Shift+Enter 换行</span><button id="composer-send" type="submit" class="primary" disabled>提交系统提示词</button></div>
@@ -54,7 +56,7 @@
           <div id="detail-images" class="detail-block" hidden></div>
           <dl id="detail-properties" class="detail-props"></dl>
           <details class="raw-event"><summary>原始数据</summary><pre id="detail-json"></pre></details>
-          <div class="detail-actions"><button id="copy-id" type="button">复制 ID</button><button id="delete-event" type="button" class="danger-text">删除这条本地记录</button></div>
+          <div class="detail-actions"><button id="detail-reply" type="button">回复此消息</button><button id="detail-mention" type="button">@ 发送者</button><button id="copy-id" type="button">复制 ID</button><button id="delete-event" type="button" class="danger-text">删除这条本地记录</button></div>
           <p class="hint">删除只清掉本地记录和 Bot 的上下文，不会撤回 QQ 里的消息。</p>
         </div>
       </aside>
@@ -105,7 +107,13 @@
   </section>
 
   <section id="tab-stickers" class="tab">
-    <div class="page-bar"><input id="sticker-search" type="search" placeholder="搜索名称、情绪或哈希" aria-label="搜索表情库"><span class="spacer"></span><button id="sticker-refresh" type="button">刷新</button><button id="sticker-add" type="button" class="primary">手动录入表情包</button></div>
+    <div class="page-bar sticker-filters">
+      <input id="sticker-search" type="search" placeholder="搜索名称、情绪或哈希" aria-label="搜索表情库">
+      <label>审核状态<select id="sticker-state" aria-label="筛选审核状态"><option value="all">全部</option><option value="approved">已通过</option><option value="rejected">未通过</option><option value="pending">待审核</option><option value="unreviewed">未审核</option></select></label>
+      <label>表情类型<select id="sticker-kind" aria-label="筛选表情类型"><option value="all">全部</option><option value="market_face">QQ 商城表情</option><option value="image">图片表情</option></select></label>
+      <label>情绪<select id="sticker-emotion" aria-label="筛选表情情绪"><option value="">全部</option></select></label>
+      <span class="spacer"></span><button id="sticker-refresh" type="button">刷新</button><button id="sticker-add" type="button" class="primary">手动录入表情包</button>
+    </div>
     <p class="page-note">所有授权群共用。可人工确认直接入库，也可交给自动审核；支持从聊天图片详情收录。</p>
     <div id="sticker-records" class="sticker-grid"></div>
     <div class="pager"><span id="sticker-count"></span><button id="sticker-prev" type="button">上一页</button><button id="sticker-next" type="button">下一页</button><label class="page-jump">前往 <input id="sticker-page" type="number" min="1" step="1" inputmode="numeric" aria-label="表情库目标页码"> 页</label><button id="sticker-jump" type="button">跳转</button></div>
@@ -133,6 +141,12 @@
   </form>
   <div class="intervention-heading"><h3>当前群的干预记录</h3><button id="intervention-clear" type="button" class="danger-text">清除当前群生效项</button></div>
   <div id="intervention-list"></div>
+</dialog>
+<dialog id="mention-dialog" class="intervention-dialog" aria-labelledby="mention-title">
+  <div class="dialog-head"><h2 id="mention-title">@ 群友</h2><button id="mention-close" type="button" class="icon-button" aria-label="关闭群友选择">×</button></div>
+  <input id="mention-search" type="search" placeholder="搜索昵称、额外昵称或 QQ 号" aria-label="搜索要@的群友" autocomplete="off">
+  <p class="hint">选择当前群的群友，在光标处插入 [@QQ号]；发送时转换为真正的 QQ @。最多 8 位。</p>
+  <div id="mention-results" class="mention-results" aria-live="polite"></div>
 </dialog>
 <dialog id="console-dialog" class="console-dialog" aria-labelledby="console-title">
   <div class="dialog-head"><h2 id="console-title">命令行</h2><button id="console-close" type="button" class="icon-button" aria-label="关闭命令行">×</button></div>

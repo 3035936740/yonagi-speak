@@ -13,6 +13,7 @@ MAX_IMAGE_BYTES=5*1024*1024
 MAX_TOTAL_BYTES=8*1024*1024
 MAX_REQUEST_BYTES=12*1024*1024
 MARKER=re.compile(r'\[图片(\d{1,3})?\]')
+AT_MARKER=re.compile(r'\[@([1-9]\d{4,14})\]')
 
 
 def decode_images(images):
@@ -73,10 +74,27 @@ def read_image(folder,row,image):
 def segments(folder,row):
     images=row.get('images',[])
     if len(images)>MAX_IMAGES:raise ValueError('最多附加2张图片')
-    result=[]
-    for kind,value in plan(row['text'],images):
-        result.append({'type':kind,'data':{'text':value} if kind=='text' else {'file':'base64://'+base64.b64encode(read_image(folder,row,value)).decode('ascii')}})
+    result=[{'type':'reply','data':{'id':row['reply_id']}}] if row.get('reply_id') else []
+    for kind,value in content_plan(row):
+        data=({'text':value} if kind=='text' else {'qq':value} if kind=='at'
+            else {'file':'base64://'+base64.b64encode(read_image(folder,row,value)).decode('ascii')})
+        result.append({'type':kind,'data':data})
     return result
+
+
+def content_plan(row):
+    result=[];used=set();at_ids=row.get('at_ids',[])
+    for kind,value in plan(row['text'],row.get('images',[])):
+        if kind!='text':result.append((kind,value));continue
+        cursor=0
+        for match in AT_MARKER.finditer(value):
+            uid=match.group(1)
+            if uid not in at_ids:continue
+            if uid in used:raise ValueError('同一位群友的@占位符只能使用一次')
+            if match.start()>cursor:result.append(('text',value[cursor:match.start()]))
+            result.append(('at',uid));used.add(uid);cursor=match.end()
+        if cursor<len(value):result.append(('text',value[cursor:]))
+    return [(kind,value) for uid in at_ids if uid not in used for kind,value in [('at',uid),('text',' ')]]+result
 
 
 def archive_images(folder,row):
@@ -87,7 +105,8 @@ def archive_images(folder,row):
 
 
 def display_text(row):
-    return ''.join(value if kind=='text' else '[图片]' for kind,value in plan(row['text'],row.get('images',[])))
+    return ''.join(value if kind=='text' else '@'+row.get('at_names',{}).get(value,value) if kind=='at' else '[图片]'
+        for kind,value in content_plan(row))
 
 
 def remove_upload_copies(folder,row):

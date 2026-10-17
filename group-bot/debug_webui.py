@@ -67,7 +67,9 @@ class DebugWebUI:
                         from member_labels import view
                         return self.reply(200,view(owner.root,int(query.get('group',['0'])[0]),query.get('q',[''])[0]))
                     if parsed.path=='/api/database':return self.reply(200,database_view(owner.root,int(query.get('group',[owner.config.load()['group_id']])[0]),query.get('table',['notes'])[0],query.get('q',[''])[0],query.get('offset',[0])[0]))
-                    if parsed.path=='/api/stickers':return self.reply(200,sticker_view(owner.root,query.get('q',[''])[0],query.get('offset',[0])[0]))
+                    if parsed.path=='/api/stickers':return self.reply(200,sticker_view(owner.root,
+                        query.get('q',[''])[0],query.get('offset',[0])[0],query.get('state',['all'])[0],
+                        query.get('kind',['all'])[0],query.get('emotion',[''])[0]))
                     if parsed.path=='/api/sticker-image':
                         raw,mime=sticker_image(owner.root,query.get('id',[''])[0]);return self.reply(200,raw,mime)
                     if parsed.path=='/api/message-image':
@@ -180,10 +182,11 @@ class DebugWebUI:
             or (kind=='flow' and row['kind'] not in {'sent','received','system'})
             or (kind=='system' and row['kind']=='system'))
             and term in (' '.join(str(row.get(key,'')) for key in ('text','message_id','reply_id','sender','context_id','trace_id','request_id','role','kind','level'))+' '+json.dumps(row.get('quote',{}),ensure_ascii=False)).lower()]
-        return {'ui_revision':2,'features':['avatars','system_interventions','manual_send','manual_images','intervention_delete','image_management','sticker_ai_prefill'],'groups':groups,'selected':selected,'events':filtered,'status':{
+        return {'ui_revision':2,'features':['avatars','system_interventions','manual_send','manual_images','manual_targets','intervention_delete','image_management','sticker_ai_prefill'],'groups':groups,'selected':selected,'events':filtered,'status':{
             'enabled':bool(cfg['enabled']),
             'manual_send_ready':bool(state.get('pid')) and read_json(folder/'manual-worker.json').get('pid')==state.get('pid'),
             'manual_images_ready':bool(state.get('pid')) and read_json(folder/'manual-worker.json').get('pid')==state.get('pid') and read_json(folder/'manual-worker.json').get('version',1)>=2,
+            'manual_targets_ready':bool(state.get('pid')) and read_json(folder/'manual-worker.json').get('pid')==state.get('pid') and read_json(folder/'manual-worker.json').get('version',1)>=3,
             'manual_image_limits':{'max_images':MAX_IMAGES,'max_image_bytes':MAX_IMAGE_BYTES,'max_total_bytes':MAX_TOTAL_BYTES},
             'sticker_prefill_ready':bool(state.get('pid')) and read_json(folder/'sticker-prefill-worker.json').get('pid')==state.get('pid'),
             'intervention_count':sum(row['status']=='active' for row in Interventions(self.root,selected).list()),

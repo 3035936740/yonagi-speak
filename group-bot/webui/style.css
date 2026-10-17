@@ -136,6 +136,7 @@ h1{font-size:20px;font-weight:650;line-height:1.35;overflow:hidden;text-overflow
 .search-field .clear{position:absolute;right:3px;top:3px;width:28px;height:28px;padding:0;border:0;background:transparent;color:var(--ink-3);font-size:17px}
 .check{display:flex;align-items:center;font-size:13px;color:var(--ink-2);white-space:nowrap;cursor:pointer}
 .page-bar input[type=search]{width:240px}
+.sticker-filters label{display:flex;align-items:center;gap:7px;color:var(--ink-2);white-space:nowrap}
 
 /* Chat */
 .chat-layout{display:grid;grid-template-columns:minmax(0,1fr) 340px;flex:1;min-height:0}
@@ -154,6 +155,17 @@ h1{font-size:20px;font-weight:650;line-height:1.35;overflow:hidden;text-overflow
 .composer-result{font-size:12px;color:var(--ink-2);white-space:pre-wrap}
 .composer-result:not(:empty){padding-top:6px}
 .composer-result.error{color:var(--bad)}
+.composer-targets{display:flex;flex-wrap:wrap;gap:6px;margin:6px 0 9px}
+.composer-target{display:inline-flex;align-items:center;gap:6px;max-width:100%;padding:4px 8px;background:var(--accent-soft);border-radius:7px;font-size:12px}
+.composer-target>span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.composer-target button{padding:0 4px;border:0;background:transparent}
+.msg-manual-actions{display:flex;gap:8px;margin-top:3px}
+.msg-manual-actions button{padding:0 3px;border:0;background:transparent;color:var(--ink-3);font-size:11px}
+.msg-manual-actions button:hover{color:var(--accent)}
+#mention-search{width:100%;margin:12px 0}
+.mention-results{display:flex;flex-direction:column;gap:6px;max-height:340px;overflow:auto;margin-top:12px}
+.mention-choice{display:flex;align-items:center;justify-content:space-between;gap:12px;text-align:left;padding:9px 12px}
+.mention-choice .hint{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .system-note-delete{margin-left:auto;padding:2px 8px;font-size:12px}
 .day-mark{margin:10px 0;text-align:center;font-size:12px;color:var(--ink-3)}
 .msg{display:flex;gap:10px;align-items:flex-start;margin:10px 0;max-width:min(720px,88%);cursor:pointer;border-radius:14px}
