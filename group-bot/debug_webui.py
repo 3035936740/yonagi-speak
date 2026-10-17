@@ -16,6 +16,7 @@ from debug_store import database_view, sticker_view, sticker_image
 from debug_avatars import avatar,enrich_users
 from system_interventions import Interventions
 from manual_outbox import ManualOutbox
+from manual_images import MAX_IMAGES,MAX_IMAGE_BYTES,MAX_TOTAL_BYTES
 from debug_images import image_bytes
 from sticker_prefill import StickerPrefill
 from debug_history import recover_chat,lane
@@ -105,10 +106,12 @@ class DebugWebUI:
                 if urlsplit(self.path).path!='/api/action':return self.reply(404,{'error':'Not found'})
                 try:
                     length=int(self.headers.get('Content-Length','0'))
-                    if not 0<length<=3*1024*1024:return self.reply(413,{'error':'请求内容过大'})
+                    from manual_images import MAX_REQUEST_BYTES
+                    if not 0<length<=MAX_REQUEST_BYTES:return self.reply(413,{'error':'请求内容过大'})
                     self.connection.settimeout(15)
                     value=json.loads(self.rfile.read(length))
                     if not isinstance(value,dict):raise ValueError('请求必须是JSON对象')
+                    if value.get('action')!='manual_send' and length>3*1024*1024:return self.reply(413,{'error':'请求内容过大'})
                     result=owner.dispatch(value)
                     return self.reply(200,result)
                 except TimeoutError:return self.reply(504,{'error':'操作仍在处理中，请查看群状态后再操作'})
@@ -177,9 +180,11 @@ class DebugWebUI:
             or (kind=='flow' and row['kind'] not in {'sent','received','system'})
             or (kind=='system' and row['kind']=='system'))
             and term in (' '.join(str(row.get(key,'')) for key in ('text','message_id','reply_id','sender','context_id','trace_id','request_id','role','kind','level'))+' '+json.dumps(row.get('quote',{}),ensure_ascii=False)).lower()]
-        return {'ui_revision':2,'features':['avatars','system_interventions','manual_send','intervention_delete','image_management','sticker_ai_prefill'],'groups':groups,'selected':selected,'events':filtered,'status':{
+        return {'ui_revision':2,'features':['avatars','system_interventions','manual_send','manual_images','intervention_delete','image_management','sticker_ai_prefill'],'groups':groups,'selected':selected,'events':filtered,'status':{
             'enabled':bool(cfg['enabled']),
             'manual_send_ready':bool(state.get('pid')) and read_json(folder/'manual-worker.json').get('pid')==state.get('pid'),
+            'manual_images_ready':bool(state.get('pid')) and read_json(folder/'manual-worker.json').get('pid')==state.get('pid') and read_json(folder/'manual-worker.json').get('version',1)>=2,
+            'manual_image_limits':{'max_images':MAX_IMAGES,'max_image_bytes':MAX_IMAGE_BYTES,'max_total_bytes':MAX_TOTAL_BYTES},
             'sticker_prefill_ready':bool(state.get('pid')) and read_json(folder/'sticker-prefill-worker.json').get('pid')==state.get('pid'),
             'intervention_count':sum(row['status']=='active' for row in Interventions(self.root,selected).list()),
             'online':bool(state.get('online')),'pid':state.get('pid'),'last_poll':state.get('last_poll'),

@@ -1773,17 +1773,22 @@ async def _run(smoke=False):
         sticker_prefill.mark_ready(os.getpid())
         sticker_prefill_task=None
         def record_manual(request):
-            item={'sender':cfg['bot_name'],'text':request['text'],'is_bot':True,'_manual':True,
+            item={'sender':cfg['bot_name'],'text':request.get('display_text',request['text']),'is_bot':True,'_manual':True,
                 '_manual_request_id':request['id'],'_uid':str(self_id),'_id':request['message_id'],
                 '_time':request['sent_at'],'_audience':'direct','_group_id':cfg['group_id']}
+            if request.get('image_hashes'):
+                item.update(_image_count=len(request['image_hashes']),_image_hashes=request['image_hashes'],_media_sent=True)
+                image_memory.observe(item['_id'],item['_image_hashes'])
+                for key in item['_image_hashes']:image_memory.bind(key,image_archive.digest(key))
             memory.record_manual(item,request['id'])
             first=journal.append(item)
             if not any(str(row.get('_id'))==item['_id'] for row in history):history.append(item)
             remember(item['_id']);checkpoint_seen()
             if first:
-                reply_times.append(request['sent_at']);own_replies.append(request['text'])
-                debug_events.emit('sent',text=request['text'],sender=cfg['bot_name'],message_id=item['_id'],
-                    user_id=str(self_id),manual=True,request_id=request['id'],time=request['sent_at'],origin='manual')
+                reply_times.append(request['sent_at']);own_replies.append(item['text'])
+                debug_events.emit('sent',text=item['text'],sender=cfg['bot_name'],message_id=item['_id'],
+                    user_id=str(self_id),manual=True,request_id=request['id'],time=request['sent_at'],origin='manual',
+                    **({'image_count':item['_image_count'],'image_hashes':item['_image_hashes']} if item.get('_image_count') else {}))
         known_excluded=blocked_accounts(RUNTIME)
         while not (RUNTIME / 'STOP').exists():
             cfg = settings()

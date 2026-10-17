@@ -51,23 +51,118 @@ const interventionStates={active:'生效中',expired:'已失效',cleared:'已清
 function interventionDelete(entry,group=selected){const button=node('button','删除','danger-text system-note-delete');button.type='button';button.disabled=!snapshot?.features?.includes('intervention_delete');button.title=button.disabled?'请重载Debug后台以启用删除':'删除后停止影响后续生成';button.onclick=async event=>{event.stopPropagation();try{await act({action:'system',mode:'delete',id:entry.id,group},button);if($('intervention-dialog').open)await loadInterventions();}catch{}};return button;}
 function systemRow(row){const item=node('div',undefined,'system-note'),head=node('div',undefined,'system-note-header'),entry=row.intervention||{};head.append(node('strong','系统干预'),node('span',interventionStates[entry.status]||entry.status||''),node('span',interventionModes[entry.mode]||''),node('span',eventTime(row)),interventionDelete(entry));item.append(head,node('div',row.text||'','system-note-text'));return item;}
 const composerDrafts={},manualPending=new Map(),manualDraftIDs=new Map(),composerResults=new Map(),composerBusy=new Set();
+const composerAttachments=new Map(),composerImageLoading=new Set();let composerUploadTarget=null;
 function composerKey(){return $('composer-role').value+':'+selected;}
+function attachmentsFor(key){return composerAttachments.get(key)||[];}
+function attachmentSignature(key){return attachmentsFor(key).map(image=>image.id).join(':');}
+function currentDraftText(key){return $('composer-text').dataset.key===key?$('composer-text').value:composerDrafts[key]?.text||'';}
+function clearAttachments(key){for(const image of attachmentsFor(key))URL.revokeObjectURL(image.url);composerAttachments.delete(key);}
 function composerResult(group,role,text,error=false){composerResults.set(role+':'+group,{text,error});if(group===selected)renderComposer();}
+function renderAttachments(key,system,locked){
+  const area=$('composer-attachments'),images=attachmentsFor(key);area.hidden=system||!images.length;
+  const signature=key+':'+attachmentSignature(key)+':'+locked;
+  if(area.dataset.signature===signature)return;area.dataset.signature=signature;area.replaceChildren();
+  for(const image of images){
+    const card=node('div',undefined,'composer-attachment'),preview=node('button',undefined,'composer-image-preview'),img=node('img');
+    img.src=image.url;img.alt='图片'+image.slot+'：'+image.file.name;preview.type='button';preview.title='查看图片'+image.slot;preview.append(img);
+    preview.onclick=()=>showOriginal(image.url,image.file.name||'待发送图片');
+    const caption=node('span','[图片'+image.slot+']','code'),remove=node('button','×','composer-image-remove');
+    remove.type='button';remove.disabled=locked;remove.setAttribute('aria-label','移除图片'+image.slot);
+    remove.onclick=()=>{
+      if(composerBusy.has(key)||composerImageLoading.has(key)||manualPending.has(Number(key.split(':')[1])))return;
+      composerAttachments.set(key,attachmentsFor(key).filter(item=>item.id!==image.id));URL.revokeObjectURL(image.url);
+      const text=currentDraftText(key).replaceAll('[图片'+image.slot+']','');composerDrafts[key]={...composerDrafts[key],text};
+      if($('composer-text').dataset.key===key)$('composer-text').value=text;renderComposer();
+    };
+    card.append(preview,caption,remove);area.append(card);
+  }
+}
 function renderComposer(){
   if(!snapshot)return;const input=$('composer-text'),role=$('composer-role').value,key=composerKey(),previous=input.dataset.key;
-  if(previous!==key){if(previous)composerDrafts[previous]={text:input.value,scope:$('composer-scope').value,lifetime:$('composer-lifetime').value,minutes:$('composer-minutes').value};const draft=composerDrafts[key]||{};input.value=draft.text||'';$('composer-scope').value=draft.scope||'group';$('composer-lifetime').value=draft.lifetime||'context';$('composer-minutes').value=draft.minutes||'30';input.dataset.key=key;}
-  const system=role==='system',s=snapshot.status,ready=system?snapshot.features?.includes('system_interventions'):snapshot.features?.includes('manual_send')&&s.enabled&&s.online&&s.manual_send_ready;
+  if(previous!==key){if(previous)composerDrafts[previous]={...composerDrafts[previous],text:input.value,scope:$('composer-scope').value,lifetime:$('composer-lifetime').value,minutes:$('composer-minutes').value};const draft=composerDrafts[key]||{};input.value=draft.text||'';$('composer-scope').value=draft.scope||'group';$('composer-lifetime').value=draft.lifetime||'context';$('composer-minutes').value=draft.minutes||'30';input.dataset.key=key;}
+  const system=role==='system',s=snapshot.status,images=attachmentsFor(key),locked=composerBusy.has(key)||composerImageLoading.has(key)||!system&&manualPending.has(selected);
+  const ready=system?snapshot.features?.includes('system_interventions'):snapshot.features?.includes('manual_send')&&s.enabled&&s.online&&s.manual_send_ready;
+  const imagesSupported=snapshot.features?.includes('manual_images');
   document.querySelectorAll('[data-system-option]').forEach(el=>el.hidden=!system);$('composer-minutes-row').hidden=!system||$('composer-lifetime').value!=='timed';
-  input.maxLength=system?1500:2000;input.placeholder=(system?'输入系统提示词，不会立即触发回复':'以 '+s.name+' 的身份向当前群发送消息')+'\nEnter 发送 · Shift+Enter 换行';
+  input.maxLength=system?1500:2000;input.disabled=Boolean(locked);
+  input.placeholder=(system?'输入系统提示词，不会立即触发回复':'以 '+s.name+' 的身份向当前群发送消息，可上传或粘贴图片，按 [图片1] 的位置发送')+'\nEnter 发送 · Shift+Enter 换行';
+  $('composer-upload').hidden=system;$('composer-upload').disabled=Boolean(locked||!imagesSupported||images.length>=2);
+  $('composer-upload').title=imagesSupported?'最多2张；单张≤5MB，合计≤8MB；支持PNG/JPEG/GIF/WebP':'请 /stop 后重新启动后台以加载图片上传';
+  renderAttachments(key,system,Boolean(locked));
   $('composer-role').options[1].textContent=s.name+' 消息（发到群）';$('composer-send').textContent=system?'提交系统提示词':'发送 '+s.name+' 消息';
-  $('composer-send').disabled=!ready||!input.value.trim()||composerBusy.has(key)||(!system&&manualPending.has(selected));
-  $('composer-hint').textContent=system?'不立即回复；当前对话窗口 '+s.text_limit+' 字符。Enter 提交，Shift+Enter 换行':!ready?'先启动并加载支持手动发送的群后台':'发送到本群 '+selected+'，成功后加入上下文与手动消息记忆。Enter 发送，Shift+Enter 换行';
+  $('composer-send').disabled=!ready||(!input.value.trim()&&!images.length)||Boolean(locked)||(!system&&images.length>0&&!s.manual_images_ready);
+  $('composer-hint').textContent=system?'不立即回复；当前对话窗口 '+s.text_limit+' 字符。Enter 提交，Shift+Enter 换行':!ready?'先启动并加载支持手动发送的群后台':images.length&&!s.manual_images_ready?'图片发送需要新版群后台，请 /stop 后手动重启':'发送到本群 '+selected+'，文字和图片同条发送并加入记忆。最多2张，单张≤5MB，合计≤8MB。Enter 发送，Shift+Enter 换行';
   const result=composerResults.get(key);$('composer-result').textContent=result?.text||'';$('composer-result').classList.toggle('error',Boolean(result?.error));
 }
-async function checkManualSend(group){const pending=manualPending.get(group);if(!pending||pending.checking)return;pending.checking=true;try{const row=await api('/api/manual-send?'+new URLSearchParams({group,id:pending.id}));if(['queued','sending','delivered','record_pending'].includes(row.status)){composerResult(group,'bot',row.status==='record_pending'?'QQ已发送，本地记录正在补写':'手动消息正在排队或发送…');}else{manualPending.delete(group);manualDraftIDs.delete('bot:'+group);if(row.status==='sent'){composerDrafts['bot:'+group]={text:''};if(selected===group&&$('composer-text').dataset.key==='bot:'+group&&$('composer-text').value===pending.text)$('composer-text').value='';composerResult(group,'bot','已发送，消息 ID '+row.message_id+'；已加入上下文与手动消息记忆');}else composerResult(group,'bot',row.error||'未发送，请检查后台',true);}}catch(error){composerResult(group,'bot','暂时无法确认发送结果，请核对QQ：'+error.message,true);}finally{pending.checking=false;}}
+async function addComposerImages(files,target,plain=''){
+  const key=target.key,group=Number(key.split(':')[1]);
+  if(!key.startsWith('bot:'))throw Error('图片仅支持“消息（发到群）”，系统提示词不能添加图片');
+  if(!snapshot?.features?.includes('manual_images'))throw Error('请 /stop 后重新启动后台以加载图片上传');
+  if(composerBusy.has(key)||composerImageLoading.has(key)||manualPending.has(group))throw Error('当前消息正在发送，请等待结果');
+  const previous=attachmentsFor(key),limits=snapshot.status.manual_image_limits||{max_images:2,max_image_bytes:5*1024*1024,max_total_bytes:8*1024*1024};
+  if(previous.length+files.length>limits.max_images)throw Error('最多附加2张图片');
+  let total=previous.reduce((sum,item)=>sum+item.file.size,0);
+  for(const file of files){if(!file.size||file.size>limits.max_image_bytes)throw Error('单张图片上限5MB');if(!['image/png','image/jpeg','image/gif','image/webp'].includes(file.type)&&!(file.type===''&&/\.(png|jpe?g|gif|webp)$/i.test(file.name)))throw Error('只支持PNG、JPEG、GIF、WebP图片');total+=file.size;}
+  if(total>limits.max_total_bytes)throw Error('图片附件合计上限8MB');
+  composerImageLoading.add(key);renderComposer();
+  try{
+  let frozen;
+  try{frozen=await Promise.all(files.map(async file=>new File([await file.arrayBuffer()],file.name,{type:file.type,lastModified:file.lastModified})));}
+  catch{throw Error('图片读取失败，请重新上传或粘贴');}
+  let slot=Math.max(0,...previous.map(image=>image.slot));const added=frozen.map(file=>({id:crypto.randomUUID(),slot:++slot,file,url:URL.createObjectURL(file)}));
+  if(slot>999){for(const image of added)URL.revokeObjectURL(image.url);throw Error('图片编号过多，请清空附件后重试');}
+  const text=currentDraftText(key),at=Math.min(target.start??text.length,text.length),end=Math.min(target.end??at,text.length);
+  const inserted=plain+added.map(image=>'[图片'+image.slot+']').join('');
+  if(text.length-(end-at)+inserted.length>2000){for(const image of added)URL.revokeObjectURL(image.url);throw Error('文字和图片占位符合计最多2000字');}
+  composerAttachments.set(key,[...previous,...added]);const next=text.slice(0,at)+inserted+text.slice(end);composerDrafts[key]={...composerDrafts[key],text:next};
+  if($('composer-text').dataset.key===key){$('composer-text').value=next;$('composer-text').focus();$('composer-text').setSelectionRange(at+inserted.length,at+inserted.length);}
+  renderComposer();
+  }finally{composerImageLoading.delete(key);renderComposer();}
+}
+function imagePayload(image){return new Promise((resolve,reject)=>{const reader=new FileReader();reader.onerror=()=>reject(Error('图片读取失败'));reader.onload=()=>resolve({slot:image.slot,data:String(reader.result).split(',')[1]});reader.readAsDataURL(image.file);});}
+async function checkManualSend(group){
+  const pending=manualPending.get(group);if(!pending||pending.checking)return;pending.checking=true;
+  try{
+    const row=await api('/api/manual-send?'+new URLSearchParams({group,id:pending.id}));
+    if(['queued','sending','delivered','record_pending'].includes(row.status)){composerResult(group,'bot',row.status==='record_pending'?'QQ已发送，本地记录正在补写':'手动消息正在排队或发送…');}
+    else{
+      manualPending.delete(group);manualDraftIDs.delete('bot:'+group);
+      if(row.status==='sent'){
+        const key='bot:'+group;
+        if(currentDraftText(key)===pending.text&&attachmentSignature(key)===pending.attachments){
+          clearAttachments(key);composerDrafts[key]={text:''};if($('composer-text').dataset.key===key)$('composer-text').value='';
+        }
+        composerResult(group,'bot','已发送，消息 ID '+row.message_id+'；图文已加入上下文与手动消息记忆');
+      }else composerResult(group,'bot',row.error||'未发送，请检查后台',true);
+    }
+  }catch(error){composerResult(group,'bot','暂时无法确认发送结果，请核对QQ：'+error.message,true);}
+  finally{pending.checking=false;}
+}
 $('composer-role').onchange=()=>renderComposer();$('composer-lifetime').onchange=()=>renderComposer();$('composer-text').oninput=()=>renderComposer();
+$('composer-upload').onclick=()=>{const input=$('composer-text');composerUploadTarget={key:composerKey(),start:input.selectionStart,end:input.selectionEnd};$('composer-files').click();};
+$('composer-files').onchange=async()=>{try{const files=[...$('composer-files').files];if(files.length)await addComposerImages(files,composerUploadTarget||{key:composerKey()});}catch(error){composerResult(Number((composerUploadTarget?.key||composerKey()).split(':')[1]),'bot',error.message,true);}finally{$('composer-files').value='';composerUploadTarget=null;}};
+$('composer-text').addEventListener('paste',async event=>{
+  const files=[...(event.clipboardData?.items||[])].filter(item=>item.kind==='file').map(item=>item.getAsFile()).filter(Boolean);if(!files.length)return;
+  event.preventDefault();try{await addComposerImages(files,{key:composerKey(),start:event.target.selectionStart,end:event.target.selectionEnd},event.clipboardData.getData('text/plain')||'');}catch(error){composerResult(selected,$('composer-role').value,error.message,true);}
+});
 $('composer-text').onkeydown=event=>{if(event.key==='Enter'&&!event.shiftKey&&!event.altKey&&!event.metaKey&&!event.isComposing&&event.keyCode!==229){event.preventDefault();if(!$('composer-send').disabled)$('composer').requestSubmit();}};
-$('composer').onsubmit=async event=>{event.preventDefault();const group=selected,role=$('composer-role').value,text=$('composer-text').value,key=composerKey();if(!text.trim()||composerBusy.has(key))return;composerBusy.add(key);try{if(role==='system'){await act({action:'system',mode:'add',group,text,target_scope:$('composer-scope').value,lifetime:$('composer-lifetime').value,minutes:Number($('composer-minutes').value)},$('composer-send'));composerDrafts[key]={text:''};if($('composer-text').dataset.key===key&&$('composer-text').value===text)$('composer-text').value='';composerResult(group,role,'系统提示词已保存，不触发立即回复');}else{let request=manualDraftIDs.get(key);if(!request||request.text!==text){request={id:crypto.randomUUID().replaceAll('-',''),text};manualDraftIDs.set(key,request);}const data=await act({action:'manual_send',group,text,request_id:request.id},$('composer-send'));manualPending.set(group,{id:data.request.id,text});composerResult(group,role,'手动消息已排队，等待群后台发送');await checkManualSend(group);}}catch(error){composerResult(group,role,error.message,true);}finally{composerBusy.delete(key);renderComposer();}};
+$('composer').onsubmit=async event=>{
+  event.preventDefault();const group=selected,role=$('composer-role').value,text=$('composer-text').value,key=composerKey(),images=attachmentsFor(key),attachmentIDs=attachmentSignature(key);
+  if((!text.trim()&&!images.length)||composerBusy.has(key)||composerImageLoading.has(key)||role==='bot'&&manualPending.has(group))return;
+  composerBusy.add(key);renderComposer();
+  try{
+    if(role==='system'){
+      await act({action:'system',mode:'add',group,text,target_scope:$('composer-scope').value,lifetime:$('composer-lifetime').value,minutes:Number($('composer-minutes').value)},$('composer-send'));
+      composerDrafts[key]={text:''};if($('composer-text').dataset.key===key&&$('composer-text').value===text)$('composer-text').value='';composerResult(group,role,'系统提示词已保存，不触发立即回复');
+    }else{
+      const fingerprint=JSON.stringify([text,attachmentIDs]);let request=manualDraftIDs.get(key);
+      if(!request||request.fingerprint!==fingerprint){request={id:crypto.randomUUID().replaceAll('-',''),fingerprint};manualDraftIDs.set(key,request);}
+      const payload=await Promise.all(images.map(imagePayload));
+      const data=await act({action:'manual_send',group,text,images:payload,request_id:request.id},$('composer-send'));
+      manualPending.set(group,{id:data.request.id,text,attachments:attachmentIDs});composerResult(group,role,'手动图文消息已排队，等待群后台发送');await checkManualSend(group);
+    }
+  }catch(error){composerResult(group,role,error.message,true);}finally{composerBusy.delete(key);renderComposer();}
+};
 async function api(path,body){const response=await fetch(path,{headers:{'X-QQ-Debug-Key':token,...(body?{'Content-Type':'application/json'}:{})},method:body?'POST':'GET',...(body?{body:JSON.stringify(body)}:{})});const data=await response.json();if(!response.ok)throw Error(data.error||'请求失败');return data;}
 async function act(action,button){if(backendReady!==true&&!['command','restart','pause','delete'].includes(action.action))throw Error('调试服务还是旧版本：请在 CLI 输入 /exit 后重新启动 Debug');const operationGroup=action.group??selected;if(button)button.disabled=true;toast('正在处理…');try{const data=await api('/api/action',{group:operationGroup,...action});if(data.selected!==undefined&&selected===operationGroup)selected=data.selected;toast(data.message||'已完成');if(data.shutdown){closed=true;pollSequence++;$('connection').textContent='调试服务已退出';setDot('connection-dot',false);document.querySelectorAll('button,input,select,textarea').forEach(el=>el.disabled=true);}else await poll(true);return data;}catch(error){toast(error.message,true);throw error;}finally{if(button)button.disabled=closed;}}
 function setDot(id,online,error=false){$(id).classList.toggle('live',online);$(id).classList.toggle('error',error);}
@@ -183,7 +278,7 @@ function renderRecords(){
 const chatImageModes=new Map(),chatImageLoaders=new WeakMap();
 const chatImageObserver='IntersectionObserver' in window?new IntersectionObserver(entries=>{for(const entry of entries){if(!entry.isIntersecting)continue;chatImageObserver.unobserve(entry.target);const load=chatImageLoaders.get(entry.target);chatImageLoaders.delete(entry.target);if(entry.target.isConnected&&load)load();}},{root:$('records'),rootMargin:'180px'}):null;
 function releaseChatImageLoads(area){for(const slot of area.querySelectorAll('.chat-image-slot')){chatImageObserver?.unobserve(slot);chatImageLoaders.delete(slot);}}
-function chatImageText(text){return String(text||'').replace(/\[图片(?:，(?:未读取内容|读取中|读取失败)|摘要[:：][^\]]*)\]|\[已发送图片或表情\]|\[(?:商城表情|表情包)[:：](?:[^\[\]]|\[[^\]]*\])*\]/g,' ').trim();}
+function chatImageText(text){return String(text||'').replace(/\[图片(?:\d*|，(?:未读取内容|读取中|读取失败)|摘要[:：][^\]]*)\]|\[已发送图片或表情\]|\[(?:商城表情|表情包)[:：](?:[^\[\]]|\[[^\]]*\])*\]/g,' ').trim();}
 function chatMediaKey(group,row){return group+':'+row.message_id;}
 function chatMode(group,row){return chatImageModes.get(chatMediaKey(group,row))||snapshot.status.chat_image_display||'image';}
 function renderChatImage(row,image,index,group){

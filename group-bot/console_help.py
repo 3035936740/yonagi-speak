@@ -34,7 +34,7 @@ HELP = {
         'context：默认，随对话窗口滚动到期（默认12800字）；once：下一次自然回复；timed：指定分钟；persistent：直到手动清除。\n'
         '示例：/system add --scope group --mode timed --minutes 30 这半小时回复简短一些。\n'
         '这是System→AI干预，不是User→AI消息，不会直接发送到QQ群。'),
-    'say':('/say 消息内容','以bot身份发送到当前QQ群；成功后加入上下文与手动消息记忆。不会将内容当作系统提示词。'),
+    'say':('/say 消息内容','以bot身份发送文字到当前QQ群；成功后加入上下文与手动消息记忆。WebUI的“消息（发到群）”还支持上传、粘贴图片并与文字同条发送。不会将内容当作系统提示词。'),
     'member':('/member list|show|type|block|unblock [QQ号] [类型]',
         '群友类型 AI/bot/真人/bot主、昵称说明、屏蔽与证据；仅当前群生效。\n'
         '/member list：列出当前群已有资料的账号；/member show QQ号：查看类型、昵称、说明、屏蔽和证据。\n'

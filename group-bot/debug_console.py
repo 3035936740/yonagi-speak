@@ -216,7 +216,7 @@ class Console:
                 self.notice='系统干预已保存，不触发立即回复' if value.get('mode','add')=='add' else '系统干预已更新'
                 return {'ok':True,'message':self.notice,'result':result,'selected':group}
             elif action=='manual_send':
-                request=ManualOutbox(self.root,group).enqueue(value.get('text',''),value.get('request_id'))
+                request=ManualOutbox(self.root,group).enqueue(value.get('text',''),value.get('request_id'),value.get('images'))
                 self.notice='手动消息已排队，发送成功后加入上下文和手动消息记忆'
                 return {'ok':True,'message':self.notice,'request':request,'selected':group}
             elif action in {'persona','reply_protocol'}:

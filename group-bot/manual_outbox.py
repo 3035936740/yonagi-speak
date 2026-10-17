@@ -9,6 +9,7 @@ import uuid
 
 from console_config import Config,pid_alive,read_json,runtime
 from storage_io import atomic_write_text
+from manual_images import decode_images,save_images,plan,segments,archive_images,display_text,remove_upload_copies
 
 
 class ManualOutbox:
@@ -29,7 +30,7 @@ class ManualOutbox:
 
     def mark_ready(self,pid):
         self.folder.parent.mkdir(parents=True,exist_ok=True)
-        atomic_write_text(self.folder.parent/'manual-worker.json',json.dumps({'pid':pid,'version':1}))
+        atomic_write_text(self.folder.parent/'manual-worker.json',json.dumps({'pid':pid,'version':2}))
 
     @contextmanager
     def lock(self):
@@ -44,23 +45,28 @@ class ManualOutbox:
             try:yield
             finally:stream.seek(0);msvcrt.locking(stream.fileno(),msvcrt.LK_UNLCK,1)
 
-    def enqueue(self,text,identity=None):
-        if not isinstance(text,str) or not text.strip() or len(text)>2000:raise ValueError('手动消息需为1~2000字符')
+    def enqueue(self,text,identity=None,images=None):
+        images=decode_images(images)
+        if not isinstance(text,str) or len(text)>2000 or not text.strip() and not images:raise ValueError('手动消息需有文字或图片，文字最多2000字符')
+        plan(text,images)
         identity=str(identity or uuid.uuid4().hex).replace('-','')
         if not re.fullmatch(r'[a-f0-9]{32}',identity):raise ValueError('无效发送请求ID')
         cfg=Config(self.root,self.group).load();state=read_json(runtime(self.root,self.group)/'state.json')
         with self.lock():
             if (self.folder/(identity+'.json')).exists():
                 old=self.get(identity)
-                if old['text']!=text:raise ValueError('同一发送请求不能替换内容')
+                signature=lambda rows:[(row['slot'],row['digest']) for row in rows]
+                if old['text']!=text or signature(old.get('images',[]))!=signature(images):raise ValueError('同一发送请求不能替换内容')
                 return old
             if not cfg['enabled'] or not state.get('online') or state.get('stopped') or not pid_alive(state.get('pid')):
                 raise ValueError('群后台尚未运行或QQ未连接，请先启动该群后台')
             if read_json(self.folder.parent/'manual-worker.json').get('pid')!=state.get('pid'):
                 raise ValueError('当前群后台尚未加载手动发送功能，请 /exit 后手动启动 Debug')
+            if images and read_json(self.folder.parent/'manual-worker.json').get('version',1)<2:raise ValueError('当前群后台尚未加载图片发送，请 /stop 后手动重启')
             pending=sum(read_json(path).get('status') in {'queued','sending','record_pending'} for path in self.folder.glob('*.json'))
             if pending>=10:raise ValueError('该群待发送手动消息已达10条，请等待处理')
             row={'id':identity,'group_id':self.group,'text':text,'created':time.time(),'status':'queued'}
+            if images:row['images']=save_images(self.folder,identity,images)
             self.write(row);return row
 
     async def drain(self,api,client,env,record,cfg):
@@ -78,9 +84,12 @@ class ManualOutbox:
                 if time.time()-row['created']>300:
                     row.update(status='expired',error='排队超过5分钟，未发送');self.write(row);continue
                 if not cfg['enabled'] or (self.folder.parent/'STOP').exists():return
+                try:message=segments(self.folder,row)
+                except (OSError,ValueError,KeyError,TypeError):
+                    row.update(status='failed',error='本地附件不可用，未发送；请重新上传图片');self.write(row);continue
                 row.update(status='sending');self.write(row)
                 try:
-                    response=await api(client,env,'send_group_msg',{'group_id':self.group,'message':[{'type':'text','data':{'text':row['text']}}]})
+                    response=await api(client,env,'send_group_msg',{'group_id':self.group,'message':message})
                     identity=str(response.get('message_id') or '')
                     if not re.fullmatch(r'-?\d+',identity):raise ValueError('QQ未返回消息ID')
                 except Exception as error:
@@ -88,15 +97,23 @@ class ManualOutbox:
                     self.write(row);continue
                 row.update(status='delivered',message_id=identity,sent_at=time.time());self.write(row)
             try:
+                if row.get('images'):
+                    row['image_hashes']=archive_images(self.folder,row)
+                    row['display_text']=display_text(row)
                 record(row)
             except Exception as error:
                 row.update(status='record_pending',error='QQ已发送，本地记录待补写：'+type(error).__name__)
             else:
                 row.update(status='sent');row.pop('error',None)
             self.write(row)
+            if row['status']=='sent' and row.get('image_hashes'):
+                try:remove_upload_copies(self.folder,row)
+                except OSError:pass
 
     def prune(self):
         if not self.folder.exists():return
         for path in self.folder.glob('*.json'):
             if time.time()-path.stat().st_mtime>30*86400 and read_json(path).get('status') in {'sent','expired'}:
+                try:remove_upload_copies(self.folder,read_json(path))
+                except (OSError,KeyError):pass
                 path.unlink(missing_ok=True)

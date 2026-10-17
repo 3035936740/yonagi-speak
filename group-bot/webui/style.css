@@ -403,3 +403,4 @@ dialog::backdrop{background:#0d111a66}
 }
 
 .member-block-badge{color:var(--bad,#ba3154);background:var(--hover);border:1px solid currentColor;border-radius:4px;padding:0 5px;font-size:11px}.member-block-control{display:flex;align-items:center;gap:8px;font-size:13px;line-height:1.6}.member-block-control input{flex:none;width:16px;height:16px}
+.composer-attachments{display:flex;gap:10px;flex-wrap:wrap;margin:8px 0}.composer-attachment{position:relative;display:flex;flex-direction:column;align-items:center;gap:4px;padding:6px 24px 6px 6px;border:1px solid var(--line);border-radius:8px;background:var(--panel)}.composer-image-preview{padding:0;border:0;background:transparent;cursor:zoom-in}.composer-image-preview img{display:block;width:96px;height:64px;object-fit:contain;border-radius:4px}.composer-image-remove{position:absolute;top:2px;right:2px;padding:0;width:22px;height:22px;line-height:20px}.composer-attachment .code{font-size:12px}

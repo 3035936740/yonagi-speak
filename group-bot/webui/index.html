@@ -36,8 +36,10 @@
             <label data-system-option>范围<select id="composer-scope"><option value="group">当前群</option><option value="all">所有授权群</option></select></label>
             <label data-system-option>有效期<select id="composer-lifetime"><option value="context">当前对话窗口</option><option value="once">下一次自然回复</option><option value="timed">定时失效</option><option value="persistent">手动清除</option></select></label>
             <label id="composer-minutes-row" hidden>分钟<input id="composer-minutes" type="number" min="1" max="10080" value="30"></label>
+            <button id="composer-upload" type="button" hidden>上传图片</button><input id="composer-files" type="file" accept="image/png,image/jpeg,image/gif,image/webp" multiple hidden>
           </div>
           <textarea id="composer-text" rows="2" maxlength="1500" placeholder="输入系统提示词，不会立即触发回复" aria-label="发送内容"></textarea>
+          <div id="composer-attachments" class="composer-attachments" aria-label="待发送图片" hidden></div>
           <div class="composer-bottom"><span id="composer-hint" class="hint">系统指令仅供后续回复使用；Enter 提交，Shift+Enter 换行</span><button id="composer-send" type="submit" class="primary" disabled>提交系统提示词</button></div>
           <div id="composer-result" class="composer-result" role="status" aria-live="polite"></div>
         </form>
