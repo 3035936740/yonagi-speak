@@ -306,6 +306,11 @@ class Console:
         parts=text.lstrip('/').split(maxsplit=1)
         if not parts:return
         command=unique(parts[0],COMMANDS);rest=parts[1] if len(parts)>1 else ''
+        if command=='usage':
+            from account_usage import snapshot,format_text
+            options=rest.split()
+            if set(options)-{'refresh','all'}:raise ValueError('/usage [refresh] [all]')
+            self.notice=format_text(snapshot(self.root,None if 'all' in options else self.group,True));self.panel={'kind':'help','scroll':0};return
         if command in {'quit','exit','stop'}:
             if rest:raise ValueError('/exit、/quit 或 /stop 不需要参数')
             self.running=False;self.notice='正在保存记录并退出；所有授权群后台及 WebUI 将停止';return

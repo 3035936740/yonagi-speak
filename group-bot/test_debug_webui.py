@@ -46,6 +46,27 @@ class WebUITests(unittest.TestCase):
         self.assertEqual(len(result['events']),1);self.assertEqual(result['events'][0]['kind'],'sent')
         self.assertEqual(self.client.get('/api/snapshot?group=300',headers=self.headers).status_code,400)
 
+    def test_independent_chat_and_flow_windows_can_exceed_single_limit_in_total(self):
+        events=DebugEvents(runtime(self.root,100),100)
+        for n in range(4):
+            events.emit('received',text='聊'*3000,message_id=str(900+n))
+            events.emit('stage',text='执行'*1500)
+        result=self.server.snapshot({'group':['100']})['status']
+        self.assertLessEqual(result['chat_text_chars'],result['text_limit'])
+        self.assertLessEqual(result['flow_text_chars'],result['text_limit'])
+        self.assertGreater(result['text_chars'],result['text_limit'])
+        self.assertEqual(result['text_chars'],result['chat_text_chars']+result['flow_text_chars'])
+
+    def test_usage_endpoint_is_authenticated_scoped_and_cached_without_automatic_model_calls(self):
+        self.assertEqual(self.client.get('/api/usage?group=100').status_code,401)
+        self.assertEqual(self.client.get('/api/usage?group=300',headers=self.headers).status_code,400)
+        with patch('account_usage.read_limits',return_value=[]) as read:
+            result=self.client.get('/api/usage?group=100',headers=self.headers).json()
+            self.assertEqual(result['data']['rolling_5h']['total'],0);read.assert_not_called()
+            self.client.get('/api/usage?group=100&refresh=1',headers=self.headers)
+            self.client.get('/api/usage?group=0&refresh=1',headers=self.headers)
+            self.assertEqual(read.call_count,1)
+
     def test_sticker_filters_combine_before_pagination(self):
         from debug_store import library
         from sticker_filter import FILTER_VERSION

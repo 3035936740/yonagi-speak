@@ -82,7 +82,10 @@ def database_mutate(root,group,table,mode,values=None,row_id=None,expected=None)
     folder=group_folder(root,group)
     with connection(root,group) as db:
         columns={row['name']:dict(row) for row in db.execute('PRAGMA table_info("'+table+'")')}
-        values=validate_values(table,dict(values or {}),columns)
+        values=dict(values or {})
+        if mode=='create' and 'id' in columns and columns['id']['pk'] and (values.get('id') is None or isinstance(values.get('id'),str) and not values['id'].strip()):
+            values.pop('id',None)
+        values=validate_values(table,values,columns)
         if mode=='create' and table=='notes':values.setdefault('kind','fact')
         required='content' if table=='notes' else 'name' if table=='people' else 'text' if table in {'sources','manual_messages'} else None
         if required and (mode=='create' or required in values) and not str(values.get(required,'') or '').strip():raise ValueError('内容不能为空')

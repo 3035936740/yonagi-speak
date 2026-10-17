@@ -63,6 +63,12 @@ class DebugWebUI:
                     if parsed.path=='/api/snapshot':return self.reply(200,owner.snapshot(parse_qs(parsed.query)))
                     if parsed.path=='/api/config':return self.reply(200,owner.public_config(parse_qs(parsed.query)))
                     query=parse_qs(parsed.query)
+                    if parsed.path=='/api/usage':
+                        from account_usage import snapshot,format_text
+                        group=int(query.get('group',['0'])[0])
+                        if group and group not in owner.config.load()['chat_group_whitelist']:raise ValueError('该群不在白名单内')
+                        data=snapshot(owner.root,group or None,query.get('refresh',['0'])[0]=='1')
+                        return self.reply(200,{'data':data,'text':format_text(data)})
                     if parsed.path=='/api/members':
                         from member_labels import view
                         return self.reply(200,view(owner.root,int(query.get('group',['0'])[0]),query.get('q',[''])[0]))

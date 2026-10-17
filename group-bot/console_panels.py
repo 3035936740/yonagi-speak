@@ -21,7 +21,7 @@ def status(ui):
         '图片摘要   '+str(len(cache.get('entries',{})))+'；已观察消息 '+str(cache.get('sequence',0)),
         '群友资料   '+str(len(profiles))+' 位；屏蔽 '+str(sum(row['blocked'] for row in profiles.values()))+' 位',
         '后台监听   '+cfg['webui_host']+':'+str(cfg['webui_port'] or '随机端口')+'；key '+('自定义（已隐藏）' if cfg.get('webui_key') else '随机'),
-        '快捷入口   /config 设置面板   /member 群友标记   /webui 网页后台'])
+        '快捷入口   /usage refresh 查询5小时/1周额度与token   /config 设置面板   /member 群友标记   /webui 网页后台'])
 
 
 def config_rows(ui):

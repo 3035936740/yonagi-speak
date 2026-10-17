@@ -1,5 +1,6 @@
 """Shared command inventory and complete help for CLI and WebUI command output."""
 HELP = {
+    'usage':('/usage [refresh] [all]','查看5小时/1周账号额度与本项目token统计；refresh只读查询当前Codex登录的额度（60秒缓存），all统计全部群，默认当前群。账号额度不是固定token总量；旧调用无usage记录不能补算。'),
     'status':('/status','运行总览：QQ连接、模型、超时、调用额度、12800字默认窗口、屏蔽数量和后台状态。密钥隐藏；Esc返回聊天。'),
     'config':('/config [local|global] [show|get|set|edit|inherit|字段=值]',
         '不带参数打开可搜索面板：↑↓选择，Enter编辑/保存，空格切换开关，Tab切换全局/当前群，Ctrl+U清空编辑，Esc取消/返回。\n'
@@ -54,7 +55,7 @@ def help_text(topic=''):
     if topic and topic!='all':
         name=unique(topic,COMMANDS);usage,detail=HELP[name]
         return '命令帮助 · /'+name+'\n\n'+usage+'\n'+detail+'\n\n/help 返回完整帮助；Esc返回聊天。'
-    groups=[('面板与帮助',['help','status','config','webui']),
+    groups=[('面板与帮助',['help','status','usage','config','webui']),
         ('群友资料与消息',['member','say','system']),('群与记录',['groups','group','whitelist','search','view','delete']),
         ('后台与退出',['restart','stop','exit','quit'])]
     lines=['命令帮助  /help','CLI与WebUI共用此命令清单；只操作当前群的命令以当前选中群为准。',
