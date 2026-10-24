@@ -118,7 +118,7 @@ class ConsoleTests(unittest.TestCase):
         memory=GroupMemory(folder/'group-memory.sqlite3')
         self.assertIsNone(memory.db.execute('SELECT id FROM sources WHERE id=?',(digest,)).fetchone());memory.close()
     def test_config_output_can_be_scrolled(self):
-        self.ui.execute('/config show');self.ui.scroll=100
+        self.ui.execute('/config show');self.ui.scroll=100000
         screen=self.ui.screen(100,30)
         self.assertIn('bot_name',screen)
         self.assertIn('PgUp',screen)

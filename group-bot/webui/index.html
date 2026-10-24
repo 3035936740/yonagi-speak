@@ -17,7 +17,7 @@
     <div class="group-heading"><h1 id="group-title">正在读取群列表…</h1><div class="group-meta"><span id="group-status" class="status-pill">—</span><span id="group-subtitle"></span><span id="session-detail"></span></div></div>
     <div id="group-actions" class="group-actions"><button id="reconnect-napcat" type="button">重连 NapCat</button><button id="reconnect-mcp" type="button" title="新建MCP会话并验证当前群，不重启其他应用">重连 NapCat MCP</button><button id="pause" type="button">暂停</button><button id="restart" type="button">重启</button><button id="white-remove" type="button" class="danger-text">移出白名单</button></div>
   </header>
-  <nav id="group-tabs" class="tabs" data-context-tabs aria-label="当前群页面"><button data-tab="logs" class="active" type="button">聊天记录<span id="trace-count" class="count">0</span></button><button data-tab="status" type="button">运行状态</button><button data-tab="settings" type="button">行为设置</button><button data-tab="persona" type="button">人设与规则</button><button data-tab="database" type="button">群记忆</button><button data-tab="members" type="button">群友标记</button></nav>
+  <nav id="group-tabs" class="tabs" data-context-tabs aria-label="当前群页面"><button data-tab="logs" class="active" type="button">聊天记录<span id="trace-count" class="count">0</span></button><button data-tab="status" type="button">运行状态</button><button data-tab="settings" type="button">行为设置</button><button data-tab="persona" type="button">人设与规则</button><button data-tab="database" type="button">群记忆</button><button data-tab="knowledge" type="button">知识库</button><button data-tab="members" type="button">群友标记</button></nav>
 
   <section id="tab-logs" class="tab active">
     <div class="toolbar">
@@ -99,6 +99,13 @@
   </section>
 
   <section id="tab-system" class="tab"><div class="page"><div class="page-title"><div><h2>所有群总览</h2><p id="system-summary"></p></div><button id="system-refresh" type="button">刷新</button></div><div id="global-status" class="overview-grid"></div></div></section>
+
+  <section id="tab-knowledge" class="tab">
+    <div class="page-bar"><input id="knowledge-search" type="search" placeholder="搜索知识标题或正文" aria-label="搜索知识库"><select id="knowledge-scope" aria-label="知识范围"><option value="all">全部可用知识</option><option value="group">仅当前群</option><option value="shared">所有群共享</option></select><span class="spacer"></span><button id="knowledge-refresh" type="button">刷新</button><button id="knowledge-import" type="button">导入 TXT / Markdown</button><input id="knowledge-file" type="file" accept=".txt,.md,.markdown" hidden><button id="knowledge-add" type="button" class="primary">新增知识</button></div>
+    <p class="knowledge-note">当前群知识仅供本群使用，共享知识可供所有授权群检索。只向模型提供相关片段，不自动学习群聊；可在行为设置中关闭。</p>
+    <div id="knowledge-records" class="data-table"></div>
+    <div class="pager"><span id="knowledge-count"></span><button id="knowledge-prev" type="button">上一页</button><button id="knowledge-next" type="button">下一页</button><label class="page-jump">前往 <input id="knowledge-page" type="number" min="1" step="1" aria-label="知识库目标页码"> 页</label><button id="knowledge-jump" type="button">跳转</button></div>
+  </section>
 
   <section id="tab-database" class="tab">
     <div class="page-bar"><select id="db-table" aria-label="选择数据表"></select><input id="db-search" type="search" placeholder="搜索内容、群友或 ID" aria-label="搜索群记忆"><span class="spacer"></span><button id="db-refresh" type="button">刷新</button><button id="db-add" type="button" class="primary">新增一条</button></div>

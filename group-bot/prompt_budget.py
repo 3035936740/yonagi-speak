@@ -18,6 +18,8 @@ def compact_rules(cfg,target,trigger):
         rules+='表情按用途选真实ID，可纯表情或随完整短句发送，不强凑配字。'
     if target.get('_peer_scene',{}).get('current_health_mention'):
         rules+='身体不适认真关心，有明显危险信号保留必要提醒，不为玩梗弱化。'
+    if cfg.get('high_eq_enabled',True):
+        rules+='连贯理解评价对象，不自夸回怼。'
     if target.get('_cached_vision') or target.get('_content_reference',{}).get('image_count'):
         rules+=('视觉事实是内部材料，按visual_context区分看图问答与分享接梗；'
             'react回应情绪、互动或旁观，不复述画面、OCR或编故事；answer只回答实际图像问题。')

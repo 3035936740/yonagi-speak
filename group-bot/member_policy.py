@@ -34,6 +34,13 @@ def clean_data(value,blocked,blocked_ids=()):
 
 
 def model_view(folder,context,target):
+    from console_config import read_json
+    routes=read_json(Path(folder)/'bot-command-routes.json',{})
+    command_ids={str(mid) for entry in routes.values() for mid in entry.get('commands',[])}
+    if str(target.get('_id','')) in command_ids and not target.get('at_bot'):
+        raise MemberBlocked('其他bot的调用指令；不触发模型回复')
+    if target.get('_bot_command') and not target.get('at_bot'):raise MemberBlocked('其他bot的调用指令；不触发模型回复')
+    context=[row for row in context if not row.get('_bot_command') and str(row.get('_id','')) not in command_ids]
     blocked=blocked_accounts(folder)
     if is_blocked(target,blocked):raise MemberBlocked('账号已屏蔽；跳过模型处理和发送')
     blocked_ids={str(row.get('_id','')) for row in context if is_blocked(row,blocked)}- {''}
@@ -44,9 +51,14 @@ def model_view(folder,context,target):
 
 def enrich_records(records,folder):
     from debug_avatars import enrich_users
+    from console_config import read_json
     records=enrich_users(records,folder,{})
     blocked=blocked_accounts(folder)
-    return [{**row,'blocked':str(row.get('user_id',row.get('_uid',''))) in blocked} for row in records]
+    routes=read_json(Path(folder)/'bot-command-routes.json',{})
+    commands={str(mid):{'prefix':prefix,'source':'known_bot_response'}
+        for prefix,entry in routes.items() for mid in entry.get('commands',[])}
+    return [{**row,'blocked':str(row.get('user_id',row.get('_uid',''))) in blocked,
+        'bot_command':row.get('bot_command') or commands.get(str(row.get('message_id','')))} for row in records]
 
 
 def message_account(folder,message_id):

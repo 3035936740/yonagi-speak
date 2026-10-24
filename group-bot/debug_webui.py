@@ -63,6 +63,11 @@ class DebugWebUI:
                     if parsed.path=='/api/snapshot':return self.reply(200,owner.snapshot(parse_qs(parsed.query)))
                     if parsed.path=='/api/config':return self.reply(200,owner.public_config(parse_qs(parsed.query)))
                     query=parse_qs(parsed.query)
+                    if parsed.path=='/api/knowledge':
+                        from knowledge_base import checked
+                        store,group=checked(owner.root,query.get('group',['0'])[0])
+                        return self.reply(200,store.view(group,query.get('q',[''])[0],query.get('offset',['0'])[0],
+                            query.get('scope',['all'])[0],query.get('id',[''])[0]))
                     if parsed.path=='/api/usage':
                         from account_usage import snapshot,format_text
                         group=int(query.get('group',['0'])[0])

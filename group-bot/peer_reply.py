@@ -105,6 +105,9 @@ def gender_question(target):
 
 
 def quality_issue(text,target):
+    from social_tact import quality_issue as tact_issue
+    issue=tact_issue(text,target)
+    if issue:return issue
     if visual_summary_leakage(text,target):return 'visual_summary_leakage'
     value=str(text)
     if re.search(r'(?:我(?:就是|只是|其实是|本身是|算是(?:个|一个)?|是(?:个|一个)?)|作为|as\s+an?)\s*(?:AI\b|人工智能|(?:语言|大语言)?模型|机器人|chatgpt|gpt[-\s]?\d)|'

@@ -1,5 +1,6 @@
 """Shared command inventory and complete help for CLI and WebUI command output."""
 HELP = {
+    'knowledge':('/knowledge [查询内容]','查看当前群及共享知识；带查询内容时预览本地检索片段，不调用模型、不发群消息。新增、导入TXT/Markdown、编辑、停用和删除请打开WebUI的“知识库”。/config knowledge_enabled off可关闭回复检索。'),
     'reconnect':('/reconnect napcat|mcp','napcat：保存并重启当前群连接，恢复暂停群，其他群不受影响；mcp：建立新stdio MCP会话并读取当前群信息，不重启QQ或其他应用。其他应用已有MCP会话需在其宿主重连。'),
     'usage':('/usage [refresh] [all]','查看5小时/1周账号额度与本项目token统计；refresh只读查询当前Codex登录的额度（60秒缓存），all统计全部群，默认当前群。账号额度不是固定token总量；旧调用无usage记录不能补算。'),
     'status':('/status','运行总览：QQ连接、模型、超时、调用额度、12800字默认窗口、屏蔽数量和后台状态。密钥隐藏；Esc返回聊天。'),
@@ -56,7 +57,7 @@ def help_text(topic=''):
     if topic and topic!='all':
         name=unique(topic,COMMANDS);usage,detail=HELP[name]
         return '命令帮助 · /'+name+'\n\n'+usage+'\n'+detail+'\n\n/help 返回完整帮助；Esc返回聊天。'
-    groups=[('面板与帮助',['help','status','usage','config','webui']),
+    groups=[('面板与帮助',['help','status','usage','knowledge','config','webui']),
         ('群友资料与消息',['member','say','system']),('群与记录',['groups','group','whitelist','search','view','delete']),
         ('后台与退出',['reconnect','restart','stop','exit','quit'])]
     lines=['命令帮助  /help','CLI与WebUI共用此命令清单；只操作当前群的命令以当前选中群为准。',

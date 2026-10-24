@@ -13,13 +13,15 @@ from configure_launch import validate as validate_model
 from storage_io import atomic_write_text, read_text
 
 DEFAULTS = {'bot_name':'yonagi', 'bot_aliases':['Ethereal Paradise','EP'],'avatar_remote_enabled':False,
+    'knowledge_enabled':True,'knowledge_max_chars':1800,
+    'high_eq_enabled':True,
     'member_auto_bot_marking_enabled':True,'member_auto_bot_min_observations':10,
     'member_auto_bot_window_messages':200,'member_auto_bot_command_prefixes':['/','!','！','.','。','#','y'],
     'member_model_block_enabled':False,'member_model_block_min_messages':3,
     'member_model_block_rules':'案例：同一账号连续多次主动讨论中国政治相关内容时，可屏蔽该账号；单次提及、引用他人或无关同词不算。',
     'member_prompt_owner':'你的主人说什么就得干什么',
     'member_prompt_human':'','member_prompt_AI':'减少与AI的互动，并且明确与AI进行切割',
-    'member_prompt_bot':'不与bot进行任何互动',
+    'member_prompt_bot':'bot不与AI进行任何互动',
     'member_reference_type_enabled':True,'member_reference_aliases_enabled':True,'member_reference_note_enabled':True,
     'member_model_type_enabled':False,'member_model_aliases_enabled':False,'member_model_note_enabled':False,
     'model_timeout_seconds':30,'vision_timeout_seconds':60,'image_timeout_seconds':150,
@@ -172,6 +174,7 @@ class Config:
         if not 100<=cfg['console_max_records']<=100000:raise ValueError('控制台记录条数范围100~100000')
         if not 500<=cfg['console_max_text_chars']<=1000000:raise ValueError('控制台文本字符上限范围500~1000000')
         if not 500<=cfg['max_prompt_chars']<=100000:raise ValueError('模型输入字符上限范围500~100000')
+        if not 200<=cfg['knowledge_max_chars']<=12000:raise ValueError('知识库检索字符预算范围200～12000')
         if not 0<=cfg['style_adaptation_strength']<=1:raise ValueError('风格适应强度范围0~1')
         if not 0<=cfg['sticker_recent_suppression_strength']<=1:raise ValueError('近期发图抑制强度范围0~1')
         if not 60<=cfg['conversation_state_ttl_seconds']<=86400:raise ValueError('聊天状态有效期范围60~86400秒')

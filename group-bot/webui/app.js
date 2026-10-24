@@ -9,6 +9,7 @@ const labels={system:'系统干预',received:'收到消息',sent:'Bot 发送',st
 const titles={bot_name:'人格名字',bot_aliases:'点名识别别名',model:'回复模型',reasoning_effort:'思考等级',fast_mode:'Fast 模式',passive_probability:'普通水群概率',sticker_reply_probability:'表情反应偏好',no_words_sticker_probability:'纯表情偏好',followup_sticker_probability:'文字后跟表情偏好',burst_reply_probability:'连续分段发送偏好',friendly_tease_probability:'朋友间玩笑偏好',console_max_text_chars:'调试记录文本上限',console_max_records:'调试记录条数上限',max_prompt_chars:'普通模型输入字符上限',context_messages:'传入模型的近期消息条数',max_replies_per_hour:'每小时消息上限',max_images_per_hour:'每小时绘图上限',image_summary_window_messages:'图片摘要滑动有效期',image_repeat_window_messages:'复读观察窗口',image_repeat_min_count:'复读候选次数',image_repeat_pair_confidence:'连续两次的复读置信度',image_repeat_full_streak:'明确复读所需连续次数',chat_group_whitelist:'群白名单',enabled:'机器人启用',multi_role_enabled:'模型分工',role_models:'分工角色模型',shared_sticker_library:'跨群共用表情库',style_learning_enabled:'表达学习',memory_enabled:'群聊记忆',proactive_topics_enabled:'主动开话题',image_generation_enabled:'绘图启用',recent_chat_journal_max_messages:'近期聊天存档条数',recent_chat_journal_hours:'近期聊天存档时长'};
 // First matching category wins; anything unmatched lands in "其他".
 const categories=[
+  ['knowledge','知识库','检索当前群和共享资料，按需提供给模型',key=>/^knowledge_/.test(key)],
   ['identity','身份与开关','Bot 叫什么、是否启用、在哪些群工作',key=>['enabled','bot_name','bot_aliases','chat_group_whitelist'].includes(key)],
   ['model','模型','生成回复用的模型、思考强度和分工角色',key=>/^(model|reasoning_effort|fast_mode|multi_role_enabled|role_models|role_timeout_seconds|model_timeout_seconds|text_transport)$/.test(key)],
   ['member-reference','群友资料：模型参考','选择允许传给模型参考的账号资料，默认全部开启',key=>/^member_reference_/.test(key)],
@@ -16,7 +17,7 @@ const categories=[
   ['member-block','群友资料：屏蔽规则','默认关闭自动屏蔽；人工解除优先，后台仍保留消息',key=>/^member_model_block_/.test(key)],
   ['member-model','群友资料：模型自行标记','独立控制模型修改三项资料的权限，默认全部关闭；人工资料优先',key=>/^member_model_/.test(key)],
   ['member-rules','群友资料：规则判断','按指令响应行为推断bot，不调用模型',key=>/^member_auto_/.test(key)],
-  ['participation','参与群聊的节奏','多久说一次话、什么时候接话、怎么回复',key=>/^passive_|^proactive_|^(adaptive_participation_enabled|social_planner_enabled|conversation_state_ttl_seconds|mention_cooldown_seconds|poll_seconds|peer_reply_enabled|at_reply_probability|quote_reply_probability|burst_reply_probability|friendly_tease_probability)$/.test(key)],
+  ['participation','参与群聊的节奏','多久说一次话、什么时候接话、怎么回复',key=>/^passive_|^proactive_|^(adaptive_participation_enabled|social_planner_enabled|conversation_state_ttl_seconds|mention_cooldown_seconds|poll_seconds|peer_reply_enabled|high_eq_enabled|at_reply_probability|quote_reply_probability|burst_reply_probability|friendly_tease_probability)$/.test(key)],
   ['sticker','表情','发表情的偏好与共享表情库的收录规则',key=>/sticker/.test(key)],
   ['cleanup','生成图片的清理','Bot 生成的图片保留多久、怎么清理',key=>/^generated_image_/.test(key)],
   ['image','识图与绘图','读取群友图片、复读识别和绘图',key=>/^image_|^vision_|^max_images?_|background_image_reading_enabled/.test(key)],
@@ -302,7 +303,7 @@ function eventSummary(row){let text=row.text||'';if(row.kind==='decision'){try{c
 function levelClass(row){return ['ERROR','CRITICAL'].includes(row.level)?'bad':row.level==='WARNING'?'warn':row.kind;}
 const recordViews=new Map();let recordViewScope='';
 function recordSignature(row){return JSON.stringify(['received','sent'].includes(row.kind)?
-  [row.text,row.sender,row.user_id,row.quote,row.blocked,row.manual,row.historical,row.level,(row.image_info||[]).map(image=>image.key),row.kind==='sent'?snapshot.status.name:'']:[row,snapshot.features]);}
+  [row.text,row.sender,row.user_id,row.quote,row.blocked,row.bot_command,row.manual,row.historical,row.level,(row.image_info||[]).map(image=>image.key),row.kind==='sent'?snapshot.status.name:'']:[row,snapshot.features]);}
 function renderRecords(){
   const level=$('level-filter').value,rows=snapshot.events.filter(row=>level==='all'||(level==='WARNING'?['WARNING','ERROR','CRITICAL'].includes(row.level):['ERROR','CRITICAL'].includes(row.level)));
   const scope=selected+':'+(snapshot.status.chat_image_display||'image'),fingerprint=scope+level+snapshot.status.name+JSON.stringify(rows);
@@ -349,7 +350,7 @@ function renderChatImage(row,image,index,group){
 function messageRow(row){
   const group=selected,sent=row.kind==='sent',name=sent?(snapshot.status.name||'Bot'):(row.sender||'群友');let pictures=row.image_info||[];
   const item=node('div',undefined,'msg '+row.kind);item.title=eventSummary(row);
-  const body=node('div',undefined,'msg-body'),head=node('div',undefined,'msg-head');head.append(node('strong',name),node('span',eventTime(row)));if(row.blocked)head.append(node('span','屏蔽','member-block-badge'));
+  const body=node('div',undefined,'msg-body'),head=node('div',undefined,'msg-head');head.append(node('strong',name),node('span',eventTime(row)));if(row.blocked)head.append(node('span','屏蔽','member-block-badge'));if(row.bot_command)head.append(node('span','bot指令','tag'));
   const bubble=node('div',undefined,'bubble'),toggle=pictures.length?node('button',undefined,'chat-media-toggle'):null;
   const render=()=>{
     releaseChatImageLoads(bubble);bubble.replaceChildren();if(row.quote)bubble.append(node('span',quoteSummary(row),'bubble-quote'));
@@ -485,7 +486,7 @@ function cooldownRow(){const box=node('div',undefined,'setting'),label=node('div
 function renderConfig(){const term=$('config-search').value.trim().toLowerCase(),area=$('settings'),scroll=area.scrollTop,cfg=configData.config;const priority=['enabled','bot_name','bot_aliases','model','reasoning_effort','fast_mode','passive_probability','sticker_reply_probability','chat_image_display','at_reply_probability','quote_reply_probability','proactive_topic_probability'];const keys=[...priority.filter(key=>key in cfg),...Object.keys(cfg).filter(key=>!priority.includes(key))].filter(key=>{const meta=configData.fields[key];return (meta.label+' '+key+' '+meta.help).toLowerCase().includes(term);});const buckets=new Map(categories.map(item=>[item[0],[]]));for(const key of keys)buckets.get(categories.find(item=>item[3](key))[0]).push(key);area.replaceChildren();$('settings-index').replaceChildren();for(const [id,title,description] of categories){const list=buckets.get(id),showCooldown=id==='participation'&&(!term||'回复冷却 cooldown'.includes(term));if(!list.length&&!showCooldown)continue;const section=node('section',undefined,'setting-group');section.id='settings-'+id;section.append(node('h3',title));if(description)section.append(node('p',description));if(showCooldown)section.append(cooldownRow());for(const key of list)section.append(settingRow(key));area.append(section);const jump=node('button');jump.type='button';jump.title=title;jump.append(node('span',title,'settings-index-label'),node('span',String(list.length+(showCooldown?1:0)),'count'));jump.onclick=()=>section.scrollIntoView({block:'start',behavior:matchMedia('(prefers-reduced-motion: reduce)').matches?'auto':'smooth'});$('settings-index').append(jump);}if(!area.children.length)area.append(node('div','没有找到包含“'+term+'”的设置','empty'));area.scrollTop=scroll;}
 
 async function switchTab(tab){stashPromptDraft();currentTab=tab;document.querySelectorAll('[data-context-tabs] button').forEach(item=>{const active=item.dataset.tab===tab;item.classList.toggle('active',active);item.setAttribute('aria-selected',String(active));});document.querySelectorAll('.side-nav [data-view]').forEach(item=>item.classList.toggle('active',item.dataset.view===tab));document.querySelectorAll('.tab').forEach(item=>item.classList.toggle('active',item.id==='tab-'+tab));try{if(snapshot)renderStatus();await loadActivePane();}catch(error){toast(error.message,true);}}
-async function loadActivePane(){if(['settings','persona'].includes(currentTab))await loadConfig();else if(currentTab==='database')await loadDatabase();else if(currentTab==='stickers')await loadStickers();else if(currentTab==='system')await loadSystem();else if(currentTab==='members')await loadMembers();}
+async function loadActivePane(){if(['settings','persona'].includes(currentTab))await loadConfig();else if(currentTab==='knowledge')await loadKnowledge();else if(currentTab==='database')await loadDatabase();else if(currentTab==='stickers')await loadStickers();else if(currentTab==='system')await loadSystem();else if(currentTab==='members')await loadMembers();}
 document.querySelectorAll('[data-context-tabs] [data-tab]').forEach(button=>button.onclick=()=>switchTab(button.dataset.tab));
 document.querySelectorAll('.side-nav [data-view]').forEach(button=>button.onclick=()=>switchTab(button.dataset.view));
 document.querySelectorAll('[data-kind]').forEach(button=>button.onclick=()=>{kind=button.dataset.kind;document.querySelectorAll('[data-kind]').forEach(item=>item.classList.toggle('active',item===button));poll(true);});
@@ -614,3 +615,60 @@ function showBackendVersion(ready){let banner=$('backend-version');if(!banner){b
 window.addEventListener('pagehide',()=>{for(const url of originalURLs.values())URL.revokeObjectURL(url);originalURLs.clear();});
 
 for(const id of ['sticker-state','sticker-kind','sticker-emotion'])$(id).onchange=()=>{stickerOffset=0;loadStickers().catch(error=>toast(error.message,true));};
+
+let knowledgeOffset=0,knowledgeSequence=0,knowledgeData=null,knowledgeGroup=null;
+async function loadKnowledge(){
+  const group=selected;if(knowledgeGroup!==group){knowledgeOffset=0;knowledgeGroup=group;}
+  const ticket=++knowledgeSequence;
+  const data=await api('/api/knowledge?'+new URLSearchParams({group,q:$('knowledge-search').value,scope:$('knowledge-scope').value,offset:knowledgeOffset}));
+  if(ticket!==knowledgeSequence||selected!==group)return;
+  if(data.offset>0&&data.offset>=data.total){knowledgeOffset=Math.max(0,Math.floor((data.total-1)/20)*20);return loadKnowledge();}
+  knowledgeData=data;updatePager('knowledge',data);
+  const area=$('knowledge-records');area.replaceChildren();
+  if(!data.rows.length)area.append(node('div','暂无知识。可以新增一条，或导入 UTF-8 编码的 TXT / Markdown 文件。','empty'));
+  else{
+    const table=node('table'),head=node('tr');for(const title of ['知识与摘要','范围 / 状态','来源 / 字数','操作'])head.append(node('th',title));table.append(head);
+    for(const row of data.rows){
+      const tr=node('tr'),content=node('td'),title=node('strong',row.title),preview=node('p',row.preview,'knowledge-preview');content.append(title,preview);
+      const state=node('td');state.append(node('span',row.scope==='shared'?'所有群共享':'当前群','scope-badge'),node('p',row.enabled?'已启用':'已停用'));
+      const source=node('td');source.append(node('div',row.source||'手动录入'),node('p',row.chars.toLocaleString()+' 字','code'));
+      const tools=node('td',undefined,'row-tools'),edit=node('button','查看 / 编辑'),remove=node('button','删除','danger-text');
+      edit.onclick=async()=>{try{const full=await api('/api/knowledge?'+new URLSearchParams({group,id:row.id}));if(selected===group)openKnowledge(full);}catch(error){toast(error.message,true);}};
+      remove.onclick=async()=>{if(!confirm('删除知识“'+row.title+'”？\n删除前会备份。共享知识删除后所有群都不再检索到。'))return;try{await act({action:'knowledge',mode:'delete',group,id:row.id,expected:row.version},remove);await loadKnowledge();}catch{}};
+      tools.append(edit,remove);tr.append(content,state,source,tools);table.append(tr);
+    }area.append(table);
+  }
+  $('knowledge-count').textContent='共 '+data.total+' 条 · 第 '+(Math.floor(data.offset/20)+1)+' / '+Math.max(1,Math.ceil(data.total/20))+' 页';
+  $('knowledge-prev').disabled=data.offset===0;$('knowledge-next').disabled=data.offset+data.rows.length>=data.total;
+}
+function openKnowledge(row=null){
+  const group=selected,fields=[{name:'title',label:'标题',value:row?.title||'',maxLength:150},
+    {name:'scope',label:'使用范围',value:row?.scope||'group',options:[{value:'group',label:'仅当前群'},{value:'shared',label:'所有群共享'}]},
+    {name:'enabled',label:'状态',value:row?.enabled===false?'off':'on',options:[{value:'on',label:'启用：允许模型检索'},{value:'off',label:'停用：保留内容，不供模型检索'}]},
+    {name:'source',label:'来源 / 文件名',value:row?.source||'',maxLength:200,placeholder:'可选，例如文档名称或资料出处'},
+    {name:'content',label:'知识正文',value:row?.content||'',long:true,maxLength:200000,placeholder:'粘贴资料或输入知识内容，最多200000字'}];
+  const inputs=openEditor(row?.id?'查看 / 编辑知识':'新增知识',fields,async inputs=>{
+    const values=Object.fromEntries(fields.map(field=>[field.name,inputs[field.name].value]));values.enabled=values.enabled==='on';
+    await act({action:'knowledge',mode:'save',group,id:row?.id||'',expected:row?.version,values},$('store-save'));await loadKnowledge();
+  },'保存前自动备份；按段建立本地索引，下次回复生效。共享资料对所有授权群可见，知识内容只作为参考。');
+  inputs.content.classList.add('knowledge-content');
+}
+$('knowledge-add').onclick=()=>openKnowledge();
+$('knowledge-refresh').onclick=()=>loadKnowledge().catch(error=>toast(error.message,true));
+for(const id of ['knowledge-search','knowledge-scope'])$(id)[id==='knowledge-search'?'oninput':'onchange']=()=>{knowledgeOffset=0;loadKnowledge().catch(error=>toast(error.message,true));};
+$('knowledge-prev').onclick=()=>{knowledgeOffset=Math.max(0,knowledgeOffset-20);loadKnowledge().catch(error=>toast(error.message,true));};
+$('knowledge-next').onclick=()=>{knowledgeOffset+=20;loadKnowledge().catch(error=>toast(error.message,true));};
+$('knowledge-jump').onclick=()=>{if(!knowledgeData)return;const page=Number($('knowledge-page').value),pages=Math.max(1,Math.ceil(knowledgeData.total/20));if(!Number.isInteger(page)||page<1||page>pages)return toast('页码请输入1～'+pages+'的整数',true);knowledgeOffset=(page-1)*20;loadKnowledge().catch(error=>toast(error.message,true));};
+$('knowledge-page').onkeydown=event=>{if(event.key==='Enter'){event.preventDefault();$('knowledge-jump').click();}};
+$('knowledge-import').onclick=()=>$('knowledge-file').click();
+$('knowledge-file').onchange=async()=>{
+  const file=$('knowledge-file').files[0],group=selected;$('knowledge-file').value='';if(!file)return;
+  try{
+    if(!/\.(txt|md|markdown)$/i.test(file.name))throw Error('请选择 TXT 或 Markdown 文件');
+    if(file.size>800000)throw Error('文件最多800KB，正文最多200000字');
+    let content;try{content=new TextDecoder('utf-8',{fatal:true}).decode(await file.arrayBuffer());}catch{throw Error('请将文件另存为 UTF-8 编码后导入');}
+    if(!content.trim()||content.length>200000||content.includes('\u0000'))throw Error('正文须为1～200000字的文本');
+    if(selected!==group)return toast('当前群已切换，请重新导入',true);
+    openKnowledge({title:file.name.replace(/\.(txt|md|markdown)$/i,'').slice(0,150),content,source:file.name.slice(0,200)});
+  }catch(error){toast(error.message,true);}
+};

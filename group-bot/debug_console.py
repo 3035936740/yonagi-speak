@@ -199,6 +199,14 @@ class Console:
                 if key in PROTECTED:raise ValueError('运行路径请停机后修改原文件')
                 text=item if isinstance(item,str) else json.dumps(item,ensure_ascii=False)
                 self.configure('set '+key+' '+text)
+            elif action=='knowledge':
+                from knowledge_base import checked
+                store,knowledge_group=checked(self.root,group)
+                mode=value.get('mode','save')
+                if mode=='save':result=store.save(knowledge_group,value.get('values'),value.get('id',''),value.get('expected'))
+                elif mode=='delete':store.delete(knowledge_group,value.get('id',''),value.get('expected'));result={}
+                else:raise ValueError('未知知识库操作')
+                return {'ok':True,'selected':group,'message':'知识库已保存，下次回复生效','result':result}
             elif action=='database':
                 return {**database_mutate(self.root,group,str(value.get('table','')),str(value.get('mode','')),
                     value.get('values'),value.get('row_id'),value.get('expected')),'selected':group}
@@ -320,6 +328,16 @@ class Console:
         if command=='reconnect':
             from napcat_reconnect import reconnect
             reconnect(self,rest.strip() or 'napcat');return
+        if command=='knowledge':
+            from knowledge_base import checked
+            store,group=checked(self.root,self.group)
+            if rest.strip():
+                rows=store.retrieve(group,rest.strip(),self.config.load().get('knowledge_max_chars',1800))
+                self.notice='知识库检索 · 当前群及共享\n\n'+('\n\n'.join('【'+row['title']+'】 '+(row['source'] or '手动录入')+'\n'+row['content'] for row in rows) or '没有匹配的知识')
+            else:
+                data=store.view(group)
+                self.notice='知识库 · 共 '+str(data['total'])+' 条（显示前20条）\n\n'+('\n'.join(row['title']+' · '+('共享' if row['scope']=='shared' else '本群')+' · '+('启用' if row['enabled'] else '停用') for row in data['rows']) or '暂无知识')+'\n\n在WebUI“知识库”中新增、导入或编辑。'
+            self.panel={'kind':'help','scroll':0};return
         if command=='usage':
             from account_usage import snapshot,format_text
             options=rest.split()
